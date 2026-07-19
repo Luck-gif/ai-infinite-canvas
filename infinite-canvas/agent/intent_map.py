@@ -59,7 +59,7 @@ TEMPLATES = [
 ]
 
 # MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性，v4.34 多图融合）
-SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend", "style_consistency", "scene_consistency", "prop_consistency"}
+SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend", "style_consistency", "scene_consistency", "prop_consistency", "storyboard"}
 
 
 def list_templates() -> list[dict]:
@@ -363,6 +363,13 @@ def build_workflow(
         meta["prop_weight"] = pw
         meta["workflow_graph"] = cc.workflow_to_graph(wf)
         return template_id, wf, meta
+
+    # ── v4.38: 分镜编排（Phase 9）──
+    if action == "storyboard":
+        template_id = "storyboard_sdxl"
+        meta["storyboard"] = True
+        meta["workflow_graph"] = {"nodes": [], "edges": []}
+        return template_id, {}, meta
 
     # 选择构建器（txt2img）
     if tok in ("qwen2", "qwen", "qwen_image"):

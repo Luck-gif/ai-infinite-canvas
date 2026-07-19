@@ -4,6 +4,8 @@ import type {
   GenerateResponse,
   PreviewResponse,
   TemplateMeta,
+  StoryboardArgs,
+  StoryboardResponse,
 } from './types';
 
 const BASE = '/api';
@@ -63,6 +65,11 @@ export interface GenerateArgs {
 
 export async function generate(args: GenerateArgs): Promise<GenerateResponse> {
   return postJSON<GenerateResponse>(`${BASE}/generate`, { wait: true, ...args });
+}
+
+// ── v4.38 分镜编排 ──────────────────────────────────────────
+export async function generateStoryboard(args: StoryboardArgs): Promise<StoryboardResponse> {
+  return postJSON<StoryboardResponse>(`${BASE}/storyboard`, args);
 }
 
 /** 生成前预览工作流节点图（不提交 ComfyUI，前端「工作流」面板实时显示） */

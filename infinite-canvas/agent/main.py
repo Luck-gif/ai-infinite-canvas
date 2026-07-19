@@ -136,6 +136,33 @@ class GenerateResponse(BaseModel):
     workflow: dict | None = None  # 前端无限画布内节点图（comfy_client.workflow_to_graph）
 
 
+# ── v4.38 分镜编排 ─────────────────────────────────────────────
+class StoryboardRequest(BaseModel):
+    prompts: list[str] = Field(..., min_length=1, max_length=25,
+                                description="分镜提示词列表，每项为一个镜头描述")
+    checkpoint: str | None = None
+    width: int = 1024
+    height: int = 1024
+    steps: int = 20
+    cfg: float = 7.0
+    seed: int = 0
+
+
+class StoryboardFrame(BaseModel):
+    index: int
+    prompt: str
+    prompt_id: str
+    image: str | None = None  # ComfyUI output 文件名
+    status: str = "queued"
+
+
+class StoryboardResponse(BaseModel):
+    validated: bool
+    frames: list[StoryboardFrame] = []
+    issues: list[str] = []
+    template_id: str = "storyboard_sdxl"
+
+
 # ── 用户模板管理（v4.31）─────────────────────────────────────────
 _USER_TEMPLATES_DIR = Path(__file__).parent / "templates" / "user"
 _USER_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
@@ -388,6 +415,99 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
     return GenerateResponse(
         template_id=template_id, validated=True, prompt_id=prompt_id,
         status=status, images=images, issues=issues, meta=meta, workflow=graph)
+
+
+# ── v4.38 分镜编排 ─────────────────────────────────────────────
+@app.post("/api/storyboard", response_model=StoryboardResponse)
+async def storyboard(req: StoryboardRequest) -> StoryboardResponse:
+    """25宫格分镜编排 (Phase 9)：输入 N 条分镜提示词，并行生成 N 张帧图。
+
+    每个分镜帧使用共享的 checkpoint / 尺寸 / 步数 / CFG 参数，
+    seed 逐帧递增 (seed + frame_index)，确保各帧差异化。
+
+    所有帧的 txt2img 工作流提交到 ComfyUI 后，轮询等待全部完成，
+    按原始顺序返回帧结果列表。
+    """
+    prompts = [p.strip() for p in req.prompts if p.strip()]
+    if not prompts:
+        return StoryboardResponse(validated=False, issues=["至少需要 1 条分镜提示词"])
+
+    # 确定 checkpoint
+    checkpoint = req.checkpoint
+    if not checkpoint:
+        checkpoints = await asyncio.to_thread(cc.list_checkpoints)
+        if not checkpoints:
+            return StoryboardResponse(validated=False, issues=["共享库无可用模型"])
+        checkpoint = checkpoints[0]
+
+    # 1) 为每个分镜构建 txt2img 工作流（seed 逐帧递增）
+    workflows: list[dict[str, Any]] = []
+    for i, prompt in enumerate(prompts):
+        frame_seed = max(req.seed + i, 0)
+        wf = cc.build_txt2img(
+            checkpoint=checkpoint,
+            prompt=prompt,
+            negative="",
+            width=req.width, height=req.height,
+            steps=req.steps, cfg=req.cfg,
+            seed=frame_seed, batch_size=1,
+        )
+        workflows.append(wf)
+
+    # 2) 校验所有工作流（仅报告失败的第一条）
+    for i, wf in enumerate(workflows):
+        ok, issues = await asyncio.to_thread(cc.validate_workflow, wf)
+        if not ok:
+            return StoryboardResponse(
+                validated=False,
+                issues=[f"分镜 {i+1} 校验失败: {'; '.join(issues[:3])}"],
+            )
+
+    # 3) 并行提交所有工作流到 ComfyUI
+    prompt_ids: list[str] = []
+    for i, wf in enumerate(workflows):
+        try:
+            pid = await asyncio.to_thread(cc.submit_workflow, wf)
+            prompt_ids.append(pid)
+        except Exception as e:
+            return StoryboardResponse(
+                validated=False,
+                issues=[f"分镜 {i+1} 提交失败: {str(e)[:200]}"],
+            )
+
+    # 4) 并行轮询所有结果
+    from concurrent.futures import ThreadPoolExecutor
+    loop = asyncio.get_running_loop()
+
+    def _wait_for(prompt_id: str):
+        try:
+            result = cc.wait_for_result(prompt_id, timeout=600)
+            outs = result.get("outputs", {})
+            imgs: list[str] = []
+            for node_out in outs.values():
+                for img in node_out.get("images", []):
+                    imgs.append(img.get("filename", ""))
+            return imgs[0] if imgs else None
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=min(len(prompts), 8)) as pool:
+        tasks = [loop.run_in_executor(pool, _wait_for, pid) for pid in prompt_ids]
+        images = await asyncio.gather(*tasks)
+
+    # 5) 组装帧结果
+    frames = [
+        StoryboardFrame(
+            index=i,
+            prompt=prompts[i],
+            prompt_id=prompt_ids[i],
+            image=images[i] if i < len(images) else None,
+            status="success" if images[i] else "error",
+        )
+        for i in range(len(prompts))
+    ]
+
+    return StoryboardResponse(validated=True, frames=frames)
 
 
 @app.post("/api/upload", response_model=UploadResponse)

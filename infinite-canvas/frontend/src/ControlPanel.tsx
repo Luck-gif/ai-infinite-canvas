@@ -2,7 +2,7 @@
 // 支持：模型/尺寸/步数/CFG/批量/种子/负向提示词；图生图（上传或选中节点为输入 + denoise）
 // v4.29: WebSocket 实时进度条（SSE → EventSource 流式推送）
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { parseIntent, generate, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets, saveTemplate, listUserTemplates, loadUserTemplate, deleteUserTemplate } from './api';
+import { parseIntent, generate, generateStoryboard, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets, saveTemplate, listUserTemplates, loadUserTemplate, deleteUserTemplate } from './api';
 import { useCanvasStore } from './store';
 import { DEFAULT_GEN_PARAMS } from './types';
 import type { IntentResponse, GenMode, GenParams, CanvasNode, Link } from './types';
@@ -314,6 +314,10 @@ export function ControlPanel() {
       set('width', 1024);
       set('height', 1024);
     }
+    if (m === 'storyboard') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -331,7 +335,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency' || p.mode === 'prop_consistency') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency' || p.mode === 'prop_consistency' || p.mode === 'storyboard') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -436,6 +440,66 @@ export function ControlPanel() {
           return;
         }
         propImage = propUploadName;
+      }
+
+      // ── v4.38 分镜编排：独立端点，跳过预览 ──
+      if (p.mode === 'storyboard') {
+        const prompts = p.storyboardPrompts.filter((s: string) => s.trim());
+        if (prompts.length === 0) {
+          setError('请在分镜文本框中输入至少一条分镜提示词（每行一个镜头）');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+        setPhase(`${prompts.length} 帧并行生成中…`);
+        try {
+          const res = await generateStoryboard({
+            prompts,
+            checkpoint: p.ckpt || undefined,
+            width: p.width, height: p.height,
+            steps: p.steps, cfg: p.cfg,
+            seed,
+          });
+          if (!res.validated) {
+            setError(res.issues.join('; ') || '分镜生成失败');
+            setLoading(false);
+            setPhase('');
+            return;
+          }
+          // 逐个放置帧节点到画布（4 列 grid 排列）
+          const outW = p.width;
+          const outH = p.height;
+          const dw = DISPLAY_W;
+          const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
+          const base = nodeCount;
+          let placed = 0;
+          for (let i = 0; i < res.frames.length; i++) {
+            const frame = res.frames[i];
+            if (!frame.image) continue;
+            const col = placed % 4;
+            const row = Math.floor(placed / 4);
+            addNode({
+              id: crypto.randomUUID(),
+              filename: frame.image,
+              prompt: frame.prompt,
+              templateId: 'storyboard_sdxl',
+              x: 60 + col * (dw + 40),
+              y: 60 + row * (dh + 70),
+              width: dw,
+              height: dh,
+              mode: 'storyboard',
+              seed: seed + i,
+              negative: p.negative,
+              createdAt: Date.now(),
+            });
+            placed++;
+          }
+        } catch (e: any) {
+          setError(`分镜生成异常: ${e.message || e}`);
+          setLoading(false);
+          setPhase('');
+        }
+        return;
       }
 
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
@@ -659,6 +723,7 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
         <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景一致" />
         <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具一致" />
+        <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -1031,6 +1096,43 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.38: 分镜编排 Storyboard */}
+      {p.mode === 'storyboard' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>分镜编排 · Storyboard</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            每行一个分镜提示词，描述一个独立镜头画面。全部镜头共享相同的模型和参数设置，
+            并行生成后按顺序排列为故事板序列。最多支持 25 个分镜。
+          </div>
+
+          <div style={labelSm}>分镜提示词（每行一个镜头）</div>
+          <textarea
+            value={p.storyboardPrompts.join('\n')}
+            onChange={(e) => set('storyboardPrompts', e.target.value.split('\n'))}
+            placeholder={`分镜01：广角镜头，森林入口，清晨薄雾缭绕，阳光穿过树叶洒在小径上
+
+分镜02：中景，主角站在岔路口，面对两条不同的道路，神情犹豫
+
+分镜03：特写，主角的手握紧剑柄，下定决心
+
+分镜04：远景，主角走进右侧小径，镜头缓缓拉升展现整片奇幻森林`}
+            rows={10}
+            style={{
+              width: '100%', resize: 'vertical',
+              padding: '8px 10px', borderRadius: 6,
+              border: `1px solid ${theme.border.subtle}`,
+              background: theme.surface.input,
+              color: theme.text.primary,
+              fontSize: 12, fontFamily: 'inherit', lineHeight: 1.6,
+              outline: 'none', marginTop: 6,
+            }}
+          />
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
+            {p.storyboardPrompts.filter((s: string) => s.trim()).length} 个分镜 · 每行一个镜头描述
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -1110,7 +1212,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : p.mode === 'prop_consistency' ? '道具一致 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : p.mode === 'prop_consistency' ? '道具一致 ▶' : p.mode === 'storyboard' ? '分镜生成 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

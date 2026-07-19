@@ -106,7 +106,7 @@ export interface Link {
   label?: string;   // 可选关系标注（如「灵感来源」「同一系列」）
 }
 
-export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend' | 'style_consistency' | 'scene_consistency' | 'prop_consistency';
+export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend' | 'style_consistency' | 'scene_consistency' | 'prop_consistency' | 'storyboard';
 
 /** 节点模式可视化元信息（色标 + 中文名） */
 export const MODE_META: Record<GenMode, { label: string; color: string }> = {
@@ -121,6 +121,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   style_consistency: { label: '风格一致', color: '#e11d48' },
   scene_consistency: { label: '场景一致', color: '#0891b2' },
   prop_consistency: { label: '道具一致', color: '#7c3aed' },
+  storyboard: { label: '分镜编排', color: '#f59e0b' },
 };
 
 /** 生成参数（前端参数面板 → /api/generate） */
@@ -152,6 +153,7 @@ export interface GenParams {
   sceneWeight: number;         // 场景一致性：场景保持力（v4.36）
   propImage: string | null;    // 道具一致性：道具参考图上传名（v4.37）
   propWeight: number;          // 道具一致性：道具保持力（v4.37）
+  storyboardPrompts: string[]; // 分镜编排：分镜提示词列表（v4.38）
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -182,6 +184,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   sceneWeight: 0.7,
   propImage: null,
   propWeight: 0.7,
+  storyboardPrompts: [],
 };
 
 /** 模板注册表项（§6.7） */
@@ -190,4 +193,33 @@ export interface TemplateMeta {
   label?: string;
   desc?: string;
   [k: string]: unknown;
+}
+
+// ── v4.38 分镜编排 ─────────────────────────────────────────────
+/** 单个分镜帧结果 */
+export interface StoryboardFrame {
+  index: number;
+  prompt: string;
+  prompt_id: string;
+  image: string | null;
+  status: string;
+}
+
+/** /api/storyboard 响应 */
+export interface StoryboardResponse {
+  validated: boolean;
+  frames: StoryboardFrame[];
+  issues: string[];
+  template_id: string;
+}
+
+/** /api/storyboard 请求 */
+export interface StoryboardArgs {
+  prompts: string[];
+  checkpoint?: string | null;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg?: number;
+  seed?: number;
 }
