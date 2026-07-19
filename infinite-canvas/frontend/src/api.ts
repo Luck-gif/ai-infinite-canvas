@@ -106,3 +106,42 @@ export async function fetchResult(promptId: string): Promise<{ images: string[];
   if (!res.ok) throw new Error(`[${res.status}] fetchResult`);
   return res.json() as Promise<{ images: string[]; status: string; message?: string }>;
 }
+
+// ── v4.31 用户工作流模板保存/加载/删除 ──────────────────────────
+export interface UserTemplateMeta {
+  name: string;
+  saved_at: number;
+  node_count: number;
+}
+
+export interface UserTemplateData {
+  name: string;
+  saved_at: number;
+  nodes: unknown[];
+  links: unknown[];
+}
+
+/** 保存当前画布为模板。 */
+export async function saveTemplate(name: string, nodes: unknown[], links: unknown[]): Promise<{ name: string; node_count: number }> {
+  return postJSON<{ name: string; node_count: number }>(`${BASE}/templates/save`, { name, nodes, links });
+}
+
+/** 列出所有用户模板。 */
+export async function listUserTemplates(): Promise<UserTemplateMeta[]> {
+  const res = await fetch(`${BASE}/templates/user`);
+  if (!res.ok) return [];
+  return res.json() as Promise<UserTemplateMeta[]>;
+}
+
+/** 加载单个模板完整数据。 */
+export async function loadUserTemplate(name: string): Promise<UserTemplateData> {
+  const res = await fetch(`${BASE}/templates/user/${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`[${res.status}] load template`);
+  return res.json() as Promise<UserTemplateData>;
+}
+
+/** 删除用户模板。 */
+export async function deleteUserTemplate(name: string): Promise<void> {
+  const res = await fetch(`${BASE}/templates/user/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`[${res.status}] delete template`);
+}

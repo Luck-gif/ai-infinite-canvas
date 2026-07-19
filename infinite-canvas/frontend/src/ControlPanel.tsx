@@ -2,7 +2,7 @@
 // 支持：模型/尺寸/步数/CFG/批量/种子/负向提示词；图生图（上传或选中节点为输入 + denoise）
 // v4.29: WebSocket 实时进度条（SSE → EventSource 流式推送）
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { parseIntent, generate, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets } from './api';
+import { parseIntent, generate, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets, saveTemplate, listUserTemplates, loadUserTemplate, deleteUserTemplate } from './api';
 import { useCanvasStore } from './store';
 import { DEFAULT_GEN_PARAMS } from './types';
 import type { IntentResponse, GenMode, GenParams, CanvasNode, Link } from './types';
@@ -87,6 +87,7 @@ export function ControlPanel() {
   const updateNode = useCanvasStore((s) => s.updateNode);
   const setLiveWorkflow = useCanvasStore((s) => s.setLiveWorkflow);
   const select = useCanvasStore((s) => s.select);
+  const replaceAll = useCanvasStore((s) => s.replaceAll);  // v4.31: 模板加载
   const [loras, setLoras] = useState<string[]>([]);
   useEffect(() => {
     listLoras().then(setLoras).catch(() => {});
@@ -99,6 +100,15 @@ export function ControlPanel() {
       setUnionTypes(r.unionTypes);
     }).catch(() => {});
   }, []);
+
+  // v4.31: 用户工作流模板保存/加载
+  const [templateName, setTemplateName] = useState('');
+  const [templates, setTemplates] = useState<{ name: string; saved_at: number; node_count: number }[]>([]);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const loadTemplates = useCallback(() => {
+    listUserTemplates().then(setTemplates).catch(() => {});
+  }, []);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
   const set = <K extends keyof GenParams>(k: K, v: GenParams[K]) =>
     setP((prev) => ({ ...prev, [k]: v }));
@@ -865,6 +875,106 @@ export function ControlPanel() {
           <Row k="elements" v={intent.elements.join('、') || '—'} />
         </div>
       )}
+
+      {/* v4.31: 用户工作流模板保存/加载 */}
+      <div style={cardStyle}>
+        <CollapseHeader
+          open={templateOpen}
+          onToggle={() => setTemplateOpen(!templateOpen)}
+          title={`工作流模板 (${templates.length})`}
+        />
+        {templateOpen && (<>
+          {/* 保存当前画布为模板 */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <input
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') {
+                if (!templateName.trim()) return;
+                saveTemplate(templateName.trim(), nodes, links).then(() => {
+                  setTemplateName(''); loadTemplates();
+                  setError(null);
+                }).catch((err) => setError('保存模板失败：' + (err as Error).message));
+              }}}
+              placeholder="模板名称"
+              style={{
+                flex: 1, padding: '5px 8px', borderRadius: 4, fontSize: 12,
+                background: theme.bg.input, color: theme.text.primary,
+                border: `1px solid ${theme.border.subtle}`,
+              }}
+            />
+            <button
+              onClick={() => {
+                if (!templateName.trim()) return;
+                saveTemplate(templateName.trim(), nodes, links).then(() => {
+                  setTemplateName(''); loadTemplates();
+                  setError(null);
+                }).catch((err) => setError('保存模板失败：' + (err as Error).message));
+              }}
+              disabled={loading}
+              style={{
+                padding: '5px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer',
+                border: `1px solid ${theme.border.subtle}`,
+                background: theme.bg.surface, color: theme.text.secondary,
+              }}
+            >
+              保存
+            </button>
+          </div>
+
+          {/* 已保存模板列表 */}
+          {templates.length === 0 ? (
+            <div style={{ fontSize: 11, color: theme.text.hint }}>暂无模板，保存当前画布以创建模板</div>
+          ) : (
+            <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+              {templates.map((t) => (
+                <div key={t.name} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '4px 0', borderBottom: `1px solid ${theme.border.subtle}`,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: theme.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: theme.text.hint }}>
+                      {t.node_count} 节点 · {new Date(t.saved_at * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      loadUserTemplate(t.name).then((data) => {
+                        replaceAll(data.nodes as Parameters<typeof replaceAll>[0]);
+                        setError(null);
+                      }).catch((err) => setError('加载模板失败：' + (err as Error).message));
+                    }}
+                    style={{
+                      padding: '2px 6px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
+                      border: `1px solid ${theme.border.subtle}`,
+                      background: theme.bg.surface, color: theme.text.secondary,
+                    }}
+                  >
+                    加载
+                  </button>
+                  <button
+                    onClick={() => {
+                      deleteUserTemplate(t.name).then(() => {
+                        loadTemplates();
+                      }).catch((err) => setError('删除模板失败：' + (err as Error).message));
+                    }}
+                    style={{
+                      padding: '2px 6px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
+                      border: `1px solid ${theme.border.subtle}`,
+                      background: 'transparent', color: theme.accent.danger,
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
+      </div>
 
       <div style={{ marginTop: 'auto', color: theme.text.hint, fontSize: 12 }}>
         画布节点：{nodeCount}（自动本地保存）

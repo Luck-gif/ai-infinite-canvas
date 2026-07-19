@@ -18,7 +18,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -121,6 +124,26 @@ class GenerateResponse(BaseModel):
     workflow: dict | None = None  # 前端无限画布内节点图（comfy_client.workflow_to_graph）
 
 
+# ── 用户模板管理（v4.31）─────────────────────────────────────────
+_USER_TEMPLATES_DIR = Path(__file__).parent / "templates" / "user"
+_USER_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+SANITIZE_TABLE = str.maketrans({"\\": "_", "/": "_", ":": "_", "*": "_",
+                                "?": "_", "\"": "_", "<": "_", ">": "_", "|": "_"})
+
+
+class SaveTemplateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64,
+                      description="模板名称（仅用于 UI 列表）")
+    nodes: list[dict[str, Any]] = Field(..., description="画布节点列表")
+    links: list[dict[str, Any]] = Field([], description="画布连线列表")
+
+
+class UserTemplateMeta(BaseModel):
+    name: str
+    saved_at: float  # Unix 时间戳
+    node_count: int
+
 # ── 端点 ────────────────────────────────────────────────────────
 @app.post("/api/intent", response_model=IntentResponse)
 async def parse_intent(req: IntentRequest) -> IntentResponse:
@@ -170,6 +193,68 @@ async def list_controlnets() -> dict:
     """共享模型库 controlnet/ 已装 ControlNet（§6.23，控制节点化）。"""
     controlnets = await asyncio.to_thread(cc.list_controlnets)
     return {"controlnets": controlnets, "union_types": cc.CONTROLNET_UNION_TYPES}
+
+
+# ── v4.31 用户工作流模板保存/加载/删除 ────────────────────────────
+def _safe_name(name: str) -> str:
+    """过滤路径不安全字符，保留可读性。"""
+    return name.translate(SANITIZE_TABLE).strip() or "unnamed"
+
+
+@app.post("/api/templates/save")
+async def save_user_template(req: SaveTemplateRequest) -> dict:
+    """保存当前画布为可重用用户模板。"""
+    safe = _safe_name(req.name)
+    path = _USER_TEMPLATES_DIR / f"{safe}.json"
+    data = {
+        "name": req.name,
+        "saved_at": time.time(),
+        "nodes": req.nodes,
+        "links": req.links,
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"name": safe, "node_count": len(req.nodes)}
+
+
+@app.get("/api/templates/user")
+async def list_user_templates() -> list[UserTemplateMeta]:
+    """列出所有用户保存的画布模板。"""
+    result: list[UserTemplateMeta] = []
+    for path in sorted(_USER_TEMPLATES_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            result.append(UserTemplateMeta(
+                name=data.get("name", path.stem),
+                saved_at=data.get("saved_at", 0),
+                node_count=len(data.get("nodes", [])),
+            ))
+        except Exception:
+            continue
+    return result
+
+
+@app.get("/api/templates/user/{name}")
+async def load_user_template(name: str) -> dict:
+    """加载单个用户模板的完整数据。"""
+    safe = _safe_name(name)
+    path = _USER_TEMPLATES_DIR / f"{safe}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"模板 '{name}' 不存在")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取模板失败: {e}")
+
+
+@app.delete("/api/templates/user/{name}")
+async def delete_user_template(name: str) -> dict:
+    """删除指定用户模板。"""
+    safe = _safe_name(name)
+    path = _USER_TEMPLATES_DIR / f"{safe}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"模板 '{name}' 不存在")
+    path.unlink()
+    return {"deleted": safe}
 
 
 async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
