@@ -792,9 +792,54 @@ export function ControlPanel() {
               )}
               <SliderRow label="强度" value={selectedNode.controlStrength ?? 1.0} min={0} max={2} step={0.05}
                 onChange={(v) => updateNode(selectedNode.id, { controlStrength: v })} fmt={(v) => v.toFixed(2)} />
-              <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2, marginBottom: 8 }}>
-                控制图默认=目标图；可在画布上传后于节点改 controlImage（高级）。
-              </div>
+              {/* v4.30: ControlNet 参考图独立上传 */}
+              <div style={labelSm}>参考图</div>
+              {selectedNode.controlImage ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 4, overflow: 'hidden',
+                    border: `1px solid ${theme.border.subtle}`, flex: '0 0 auto',
+                  }}>
+                    <img src={imageUrl(selectedNode.controlImage)} alt="control ref"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ flex: 1, fontSize: 10, color: theme.text.secondary, wordBreak: 'break-all', lineHeight: 1.3 }}>
+                    {selectedNode.controlImage}
+                  </div>
+                  <button onClick={() => updateNode(selectedNode.id, { controlImage: '' })}
+                    style={{
+                      border: `1px solid ${theme.border.subtle}`, background: theme.bg.surface,
+                      color: theme.text.muted, borderRadius: 4, padding: '2px 6px', fontSize: 11, cursor: 'pointer',
+                    }}>
+                    清除
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: theme.text.hint, marginBottom: 8 }}>
+                  未设置（默认使用目标图）
+                </div>
+              )}
+              <label style={{
+                display: 'inline-block', cursor: 'pointer', marginBottom: 10,
+                padding: '5px 10px', borderRadius: 4, fontSize: 12,
+                border: `1px solid ${theme.border.subtle}`,
+                background: theme.bg.surface, color: theme.text.secondary,
+              }}>
+                {selectedNode.controlImage ? '更换参考图' : '上传参考图'}
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const b64 = await fileToBase64(file);
+                      const name = await uploadImage(file.name, b64);
+                      updateNode(selectedNode.id, { controlImage: name });
+                    } catch (err) {
+                      setError('参考图上传失败：' + ((err as Error)?.message || String(err)));
+                    }
+                  }}
+                />
+              </label>
             </>
           )}
           <button onClick={() => applyControl()} disabled={loading} style={{ ...genBtnStyle(loading), marginTop: 10 }}>
