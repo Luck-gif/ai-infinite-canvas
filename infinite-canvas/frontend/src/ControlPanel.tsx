@@ -72,6 +72,10 @@ export function ControlPanel() {
   // v4.34: 多图融合 - 图片B独立上传
   const [blendUploadNameB, setBlendUploadNameB] = useState<string | null>(null);
 
+  // v4.35: 风格一致性 - 风格参考图独立上传
+  const [styleUploadName, setStyleUploadName] = useState<string | null>(null);
+  const [styleUploadPreview, setStyleUploadPreview] = useState<string | null>(null);
+
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
   const [selectedOpen, setSelectedOpen] = useState(true);
@@ -290,6 +294,10 @@ export function ControlPanel() {
       set('width', 1024);
       set('height', 1024);
     }
+    if (m === 'style_consistency') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -307,7 +315,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -378,6 +386,18 @@ export function ControlPanel() {
         blendImageB = blendUploadNameB;
       }
 
+      // v4.35: 风格一致性 - 风格参考图
+      let styleImage: string | null = null;
+      if (p.mode === 'style_consistency') {
+        if (!styleUploadName) {
+          setError('风格一致性需要上传一张风格参考图（例如油画、水彩、赛博朋克风格图片）');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+        styleImage = styleUploadName;
+      }
+
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
       setPhase('预览工作流…');
       try {
@@ -399,6 +419,9 @@ export function ControlPanel() {
           blend_image_b: blendImageB,
           blend_mode: p.blendMode,
           blend_factor: p.blendFactor,
+          style_image: styleImage,
+          style_weight: p.styleWeight,
+          composition_weight: p.compositionWeight,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -426,6 +449,9 @@ export function ControlPanel() {
         blend_image_b: blendImageB,
         blend_mode: p.blendMode,
         blend_factor: p.blendFactor,
+        style_image: styleImage,
+        style_weight: p.styleWeight,
+        composition_weight: p.compositionWeight,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -497,7 +523,7 @@ export function ControlPanel() {
       const dw = DISPLAY_W;
       const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
       const parentId =
-        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend') && selectedNode && !uploadName ? selectedNode.id : null;
+        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency') && selectedNode && !uploadName ? selectedNode.id : null;
 
       const isOutpaint = p.mode === 'outpaint' && selectedNode && !uploadName;
       if (isOutpaint && selectedNode) {
@@ -582,6 +608,7 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" />
         <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
         <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
+        <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -780,6 +807,72 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.35: 风格一致性 IPAdapterStyleComposition */}
+      {p.mode === 'style_consistency' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>风格一致性 · IPAdapterStyle</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            上传一张风格参考图（如油画、水彩、赛博朋克、水墨风），将风格迁移到你的提示词生成中。
+            推荐选择高对比度、特征明显的风格图片。
+          </div>
+
+          <div style={labelSm}>风格参考图</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            {styleUploadName ? '更换风格图' : '上传风格参考图'}
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                (async () => {
+                  if (!f) return;
+                  setError(null);
+                  try {
+                    const dataUrl = await fileToBase64(f);
+                    setStyleUploadPreview(dataUrl);
+                    const name = await uploadImage(`style_${Date.now()}_${f.name}`, dataUrl);
+                    setStyleUploadName(name);
+                  } catch { setError('风格图上传失败'); }
+                })();
+              }} />
+          </label>
+          {styleUploadPreview && (
+            <div style={{ marginTop: 8 }}>
+              <img src={styleUploadPreview} alt="风格参考"
+                style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 6, border: `1px solid ${theme.border.subtle}` }} />
+              <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
+                {styleUploadName}
+              </div>
+            </div>
+          )}
+          {!styleUploadName && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.accent.amber }}>请上传风格参考图</div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <SliderRow
+              label="风格强度 style_weight"
+              value={p.styleWeight}
+              min={0.1} max={1.5} step={0.05}
+              onChange={(v) => set('styleWeight', v)}
+              fmt={(v) => v.toFixed(2)} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            推荐 0.5-0.8；越低越像提示词原图，越高风格越强烈
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <SliderRow
+              label="构图影响 composition_weight"
+              value={p.compositionWeight}
+              min={0} max={1} step={0.05}
+              onChange={(v) => set('compositionWeight', v)}
+              fmt={(v) => v.toFixed(2)} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            0=构图完全由提示词决定 / 1=构图跟随参考图。推荐 0.1-0.4
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -859,7 +952,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

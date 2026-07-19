@@ -106,7 +106,7 @@ export interface Link {
   label?: string;   // 可选关系标注（如「灵感来源」「同一系列」）
 }
 
-export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend';
+export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend' | 'style_consistency';
 
 /** 节点模式可视化元信息（色标 + 中文名） */
 export const MODE_META: Record<GenMode, { label: string; color: string }> = {
@@ -118,6 +118,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   img2vid: { label: '图生视频', color: '#db2777' },
   face_consistency: { label: '角色一致', color: '#f97316' },
   image_blend: { label: '图像融合', color: '#14b8a6' },
+  style_consistency: { label: '风格一致', color: '#e11d48' },
 };
 
 /** 生成参数（前端参数面板 → /api/generate） */
@@ -142,6 +143,9 @@ export interface GenParams {
   blendMode: string;       // 多图融合：混合模式（v4.34）
   blendFactor: number;     // 多图融合：混合强度（v4.34）
   blendImageB: string | null;  // 多图融合：图片B上传名（v4.34）
+  styleImage: string | null;   // 风格一致性：风格参考图上传名（v4.35）
+  styleWeight: number;         // 风格一致性：风格影响权重（v4.35）
+  compositionWeight: number;   // 风格一致性：构图影响权重（v4.35）
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -165,6 +169,9 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   blendMode: 'normal',
   blendFactor: 0.5,
   blendImageB: null,
+  styleImage: null,
+  styleWeight: 0.8,
+  compositionWeight: 0.3,
 };
 
 /** 模板注册表项（§6.7） */

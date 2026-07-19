@@ -47,10 +47,13 @@ TEMPLATES = [
     {"id": "image_blend", "name": "多图融合 · ImageBlend (v4.34)",
      "category": "image_blend", "model": "none", "license": "MIT",
      "params": {"blend_mode": "normal", "blend_factor": 0.5}},
+    {"id": "style_consistency_sdxl", "name": "风格一致性 · NoobAI-XL + IPAdapterStyle (v4.35)",
+     "category": "style_consistency", "model": "sdxl", "license": "OpenRAIL++-M / Apache 2.0",
+     "params": {"steps": 20, "cfg": 7.0, "style_weight": 0.8, "composition_weight": 0.3, "sampler": "euler", "scheduler": "normal"}},
 ]
 
 # MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性，v4.34 多图融合）
-SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend"}
+SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend", "style_consistency"}
 
 
 def list_templates() -> list[dict]:
@@ -126,6 +129,9 @@ def build_workflow(
     blend_image_b: str | None = None,
     blend_mode: str = "normal",
     blend_factor: float = 0.5,
+    style_image: str | None = None,
+    style_weight: float = 0.8,
+    composition_weight: float = 0.3,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """意图 → 模板 → 参数填充 → workflow JSON。
 
@@ -280,6 +286,29 @@ def build_workflow(
         meta["image_b"] = blend_image_b
         meta["blend_mode"] = bm
         meta["blend_factor"] = bf
+        meta["workflow_graph"] = cc.workflow_to_graph(wf)
+        return template_id, wf, meta
+
+    # ── v4.35: 风格一致性（Phase 8）──
+    if action == "style_consistency":
+        template_id = "style_consistency_sdxl"
+        if not style_image:
+            return _fallback(action, "style_consistency 需要 style_image（先上传风格参考图）", prompt, width, height)
+        steps = int(params.get("steps") or 20)
+        cfg = float(params.get("cfg") or 7.0)
+        sw = float(params.get("style_weight") or style_weight)
+        cw = float(params.get("composition_weight") or composition_weight)
+        wf = cc.build_style_consistency(
+            style_image=style_image, checkpoint=NOOBAI_CKPT,
+            prompt=prompt, negative=negative,
+            width=width, height=height,
+            steps=steps, cfg=cfg, seed=seed,
+            style_weight=sw, composition_weight=cw,
+        )
+        meta["model_files"] = {"checkpoint": NOOBAI_CKPT}
+        meta["style_image"] = style_image
+        meta["style_weight"] = sw
+        meta["composition_weight"] = cw
         meta["workflow_graph"] = cc.workflow_to_graph(wf)
         return template_id, wf, meta
 

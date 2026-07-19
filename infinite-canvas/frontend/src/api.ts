@@ -51,6 +51,9 @@ export interface GenerateArgs {
   blend_image_b?: string | null;  // 多图融合：图片B（v4.34）
   blend_mode?: string;            // 多图融合：混合模式（v4.34）
   blend_factor?: number;          // 多图融合：混合强度（v4.34）
+  style_image?: string | null;   // 风格一致性：风格参考图（v4.35）
+  style_weight?: number;         // 风格一致性：风格影响权重（v4.35）
+  composition_weight?: number;   // 风格一致性：构图影响权重（v4.35）
   wait?: boolean;
 }
 
