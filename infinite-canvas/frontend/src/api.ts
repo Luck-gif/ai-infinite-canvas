@@ -48,6 +48,9 @@ export interface GenerateArgs {
   fps?: number;      // 视频帧率（Phase 9）
   face_image?: string | null;  // 角色一致性：人脸参考图（v4.33）
   face_weight?: number;         // 角色一致性：面部权重（v4.33）
+  blend_image_b?: string | null;  // 多图融合：图片B（v4.34）
+  blend_mode?: string;            // 多图融合：混合模式（v4.34）
+  blend_factor?: number;          // 多图融合：混合强度（v4.34）
   wait?: boolean;
 }
 

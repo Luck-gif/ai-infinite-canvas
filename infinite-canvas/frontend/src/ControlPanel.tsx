@@ -22,6 +22,13 @@ const DIR_LABEL: Record<'left' | 'right' | 'up' | 'down' | 'all', string> = {
   left: '左', right: '右', up: '上', down: '下', all: '四向',
 };
 
+const BLEND_MODES = [
+  'normal', 'add', 'multiply', 'screen', 'overlay', 'soft_light',
+  'difference', 'darken', 'lighten', 'color_dodge', 'color_burn',
+  'linear_dodge', 'linear_burn', 'hue', 'saturation', 'color',
+  'luminosity', 'subtract', 'divide',
+];
+
 /** 将 URL 图片取回并转 base64（用于「选中节点作为图生图输入」） */
 async function urlToBase64(url: string): Promise<string> {
   const res = await fetch(url);
@@ -61,6 +68,10 @@ export function ControlPanel() {
   // v4.33: 角色一致性 - 人脸参考图独立上传
   const [faceUploadName, setFaceUploadName] = useState<string | null>(null);
   const [faceUploadPreview, setFaceUploadPreview] = useState<string | null>(null);
+
+  // v4.34: 多图融合 - 图片B独立上传
+  const [blendUploadNameB, setBlendUploadNameB] = useState<string | null>(null);
+  const [blendUploadPreviewB, setBlendUploadPreviewB] = useState<string | null>(null);
 
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
@@ -142,6 +153,20 @@ export function ControlPanel() {
       setFaceUploadName(name);
     } catch (e) {
       setError('人脸图上传失败：' + ((e as Error)?.message || String(e)));
+    }
+  };
+
+  // v4.34: 多图融合 - 图片B上传
+  const onPickBlendFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    try {
+      const dataUrl = await fileToBase64(file);
+      setBlendUploadPreviewB(dataUrl);
+      const name = await uploadImage(`blend_${Date.now()}_${file.name}`, dataUrl);
+      setBlendUploadNameB(name);
+    } catch (e) {
+      setError('融合图B上传失败：' + ((e as Error)?.message || String(e)));
     }
   };
 
@@ -264,6 +289,10 @@ export function ControlPanel() {
       set('width', 1024);
       set('height', 1024);
     }
+    if (m === 'image_blend') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -281,7 +310,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -296,9 +325,9 @@ export function ControlPanel() {
       // 3) 图生图/局部重绘/扩图 输入图（上传优先，否则选中节点）
       let inputImage: string | null = null;
       let maskImage: string | null = null;
-      if (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid') {
+      if (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'image_blend') {
         const needMsg =
-          p.mode === 'inpaint' ? '局部重绘' : p.mode === 'outpaint' ? '扩图' : '图生图';
+          p.mode === 'inpaint' ? '局部重绘' : p.mode === 'outpaint' ? '扩图' : p.mode === 'image_blend' ? '图像融合' : '图生图';
         if (uploadName) {
           inputImage = uploadName;
         } else if (selectedNode) {
@@ -340,6 +369,18 @@ export function ControlPanel() {
         }
       }
 
+      // v4.34: 多图融合 - 图片B
+      let blendImageB: string | null = null;
+      if (p.mode === 'image_blend') {
+        if (!blendUploadNameB) {
+          setError('图像融合需要图片B：请上传叠加层图片');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+        blendImageB = blendUploadNameB;
+      }
+
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
       setPhase('预览工作流…');
       try {
@@ -358,6 +399,9 @@ export function ControlPanel() {
           outpaint_pixels: p.mode === 'outpaint' ? p.outpaintPixels : undefined,
           face_image: faceImage,
           face_weight: p.faceWeight,
+          blend_image_b: blendImageB,
+          blend_mode: p.blendMode,
+          blend_factor: p.blendFactor,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -382,6 +426,9 @@ export function ControlPanel() {
         outpaint_pixels: p.mode === 'outpaint' ? p.outpaintPixels : undefined,
         face_image: faceImage,
         face_weight: p.faceWeight,
+        blend_image_b: blendImageB,
+        blend_mode: p.blendMode,
+        blend_factor: p.blendFactor,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -453,7 +500,7 @@ export function ControlPanel() {
       const dw = DISPLAY_W;
       const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
       const parentId =
-        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency') && selectedNode && !uploadName ? selectedNode.id : null;
+        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend') && selectedNode && !uploadName ? selectedNode.id : null;
 
       const isOutpaint = p.mode === 'outpaint' && selectedNode && !uploadName;
       if (isOutpaint && selectedNode) {
@@ -537,6 +584,7 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" />
         <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" />
         <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
+        <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -673,6 +721,68 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.34: 多图融合 ImageBlend */}
+      {p.mode === 'image_blend' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>多图融合 · ImageBlend</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            将两张图片按指定模式和强度混合。图片 A 为底图，图片 B 叠加在上。
+          </div>
+
+          {/* 图片 A（复用现有上传机制） */}
+          <div style={labelSm}>图片 A（底图）</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            {uploadName ? '更换图片A' : '上传图片A'}
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => onPickFile(e.target.files?.[0] || null)} />
+          </label>
+          {(uploadPreview || selectedNode) && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.text.soft }}>
+              {uploadName ? `已上传：${uploadName}` : selectedNode ? '将使用选中节点作为图片A' : ''}
+            </div>
+          )}
+          {!uploadName && !selectedNode && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.accent.amber }}>请上传或选中节点作为图片A</div>
+          )}
+
+          {/* 图片 B */}
+          <div style={{ ...labelSm, marginTop: 12 }}>图片 B（叠加层）</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            {blendUploadNameB ? '更换图片B' : '上传图片B'}
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => onPickBlendFile(e.target.files?.[0] || null)} />
+          </label>
+          {blendUploadNameB && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.text.soft }}>已上传：{blendUploadNameB}</div>
+          )}
+          {!blendUploadNameB && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.accent.amber }}>请上传图片B</div>
+          )}
+
+          {/* 混合模式选择 */}
+          <div style={{ ...labelSm, marginTop: 12 }}>混合模式</div>
+          <select
+            value={p.blendMode}
+            onChange={(e) => set('blendMode', e.target.value)}
+            style={{
+              width: '100%', marginTop: 4, marginBottom: 10,
+              background: theme.bg.dropdown, color: theme.text.secondary,
+              border: `1px solid ${theme.border.subtle}`, borderRadius: 6,
+              padding: '6px 8px', fontSize: 12,
+            }}
+          >
+            {BLEND_MODES.map((m) => (<option key={m} value={m}>{m}</option>))}
+          </select>
+
+          {/* 混合强度 */}
+          <SliderRow label="混合强度 blend_factor" value={p.blendFactor} min={0} max={1} step={0.05}
+            onChange={(v) => set('blendFactor', v)} fmt={(v) => v.toFixed(2)} />
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            0=纯A / 0.5=各半 / 1=纯B
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -752,7 +862,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

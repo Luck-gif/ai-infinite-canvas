@@ -44,10 +44,13 @@ TEMPLATES = [
     {"id": "face_consistency_sdxl", "name": "角色一致性 · NoobAI-XL + IPAdapterFaceID (v4.33)",
      "category": "face_consistency", "model": "sdxl", "license": "OpenRAIL++-M / Apache 2.0",
      "params": {"steps": 20, "cfg": 7.0, "face_weight": 0.8, "sampler": "euler", "scheduler": "normal"}},
+    {"id": "image_blend", "name": "多图融合 · ImageBlend (v4.34)",
+     "category": "image_blend", "model": "none", "license": "MIT",
+     "params": {"blend_mode": "normal", "blend_factor": 0.5}},
 ]
 
-# MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性）
-SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency"}
+# MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性，v4.34 多图融合）
+SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend"}
 
 
 def list_templates() -> list[dict]:
@@ -120,6 +123,9 @@ def build_workflow(
     fps: int | None = None,
     face_image: str | None = None,
     face_weight: float = 0.8,
+    blend_image_b: str | None = None,
+    blend_mode: str = "normal",
+    blend_factor: float = 0.5,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """意图 → 模板 → 参数填充 → workflow JSON。
 
@@ -256,6 +262,24 @@ def build_workflow(
         meta["model_files"] = {"checkpoint": NOOBAI_CKPT}
         meta["face_image"] = face_image
         meta["face_weight"] = fw
+        meta["workflow_graph"] = cc.workflow_to_graph(wf)
+        return template_id, wf, meta
+
+    # ── v4.34: 多图融合（Phase 9）──
+    if action == "image_blend":
+        template_id = "image_blend"
+        if not input_image or not blend_image_b:
+            return _fallback(action, "image_blend 需要两张图片（A 和 B）", prompt, width, height)
+        bm = str(params.get("blend_mode") or blend_mode)
+        bf = float(params.get("blend_factor") or blend_factor)
+        wf = cc.build_image_blend(
+            image_a=input_image, image_b=blend_image_b,
+            blend_mode=bm, blend_factor=bf,
+        )
+        meta["image_a"] = input_image
+        meta["image_b"] = blend_image_b
+        meta["blend_mode"] = bm
+        meta["blend_factor"] = bf
         meta["workflow_graph"] = cc.workflow_to_graph(wf)
         return template_id, wf, meta
 

@@ -399,6 +399,37 @@ def build_face_consistency(
     }
 
 
+def build_image_blend(
+    image_a: str,
+    image_b: str,
+    blend_mode: str = "normal",
+    blend_factor: float = 0.5,
+) -> dict[str, Any]:
+    """多图融合工作流（v4.34, Phase 9）。
+
+    两张图片通过 ImageBlend 节点按指定模式和强度混合：
+    1. LoadImage A → ImageBlend(image1)
+    2. LoadImage B → ImageBlend(image2)
+    3. ImageBlend(blend_factor, blend_mode) → SaveImage
+
+    blend_mode: normal / add / multiply / screen / overlay / soft_light / difference / darken / lighten / color_dodge / color_burn / linear_dodge / linear_burn / hue / saturation / color / luminosity / subtract / divide
+    """
+    prefix = uuid.uuid4().hex[:8]
+    return {
+        "1": {"class_type": "LoadImage", "inputs": {"image": image_a}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": image_b}},
+        "3": {"class_type": "ImageBlend",
+              "inputs": {
+                  "image1": ["1", 0],
+                  "image2": ["2", 0],
+                  "blend_factor": blend_factor,
+                  "blend_mode": blend_mode,
+              }},
+        "4": {"class_type": "SaveImage",
+              "inputs": {"images": ["3", 0], "filename_prefix": f"infinite_canvas_blend/{prefix}"}},
+    }
+
+
 def build_txt2img(
     checkpoint: str,
     prompt: str = "a beautiful scenery",

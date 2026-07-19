@@ -106,7 +106,7 @@ export interface Link {
   label?: string;   // 可选关系标注（如「灵感来源」「同一系列」）
 }
 
-export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency';
+export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend';
 
 /** 节点模式可视化元信息（色标 + 中文名） */
 export const MODE_META: Record<GenMode, { label: string; color: string }> = {
@@ -117,6 +117,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   txt2vid: { label: '文生视频', color: '#a21caf' },
   img2vid: { label: '图生视频', color: '#db2777' },
   face_consistency: { label: '角色一致', color: '#f97316' },
+  image_blend: { label: '图像融合', color: '#14b8a6' },
 };
 
 /** 生成参数（前端参数面板 → /api/generate） */
@@ -138,6 +139,9 @@ export interface GenParams {
   fps?: number;      // 视频帧率（Phase 9）
   faceWeight: number;    // 角色一致性：面部影响权重（v4.33）
   faceImage: string | null;  // 角色一致性：人脸参考图上传名（v4.33）
+  blendMode: string;       // 多图融合：混合模式（v4.34）
+  blendFactor: number;     // 多图融合：混合强度（v4.34）
+  blendImageB: string | null;  // 多图融合：图片B上传名（v4.34）
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -158,6 +162,9 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   fps: 16,
   faceWeight: 0.8,
   faceImage: null,
+  blendMode: 'normal',
+  blendFactor: 0.5,
+  blendImageB: null,
 };
 
 /** 模板注册表项（§6.7） */
