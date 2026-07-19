@@ -87,6 +87,8 @@ export interface CanvasNode {
   // ── 控制节点（§6.22：LoRA / ControlNet 节点化）──
   kind?: 'image' | 'control' | 'video';   // 节点种类：图片节点 | 控制节点 | 视频节点
   controlKind?: 'lora' | 'controlnet'; // 控制节点子类型
+  frames?: number;           // 视频节点帧数（v4.32）
+  fps?: number;              // 视频节点帧率（v4.32）
   loraName?: string;             // LoRA 文件名（含 .safetensors）
   loraStrength?: number;         // LoRA 强度（model & clip 共用）
   controlType?: string;          // ControlNet 类型（v4.23）

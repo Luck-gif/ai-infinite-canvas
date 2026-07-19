@@ -451,6 +451,8 @@ export function ControlPanel() {
             mode: p.mode,
             parentId,
             kind: (p.mode === 'txt2vid' || p.mode === 'img2vid') ? 'video' : undefined,
+            frames: (p.mode === 'txt2vid' || p.mode === 'img2vid') ? p.frames : undefined,
+            fps: (p.mode === 'txt2vid' || p.mode === 'img2vid') ? p.fps : undefined,
             seed,
             negative: p.negative,
             createdAt: Date.now(),

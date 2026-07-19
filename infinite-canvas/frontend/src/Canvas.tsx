@@ -125,11 +125,21 @@ function NodeImage({
             ? (node.controlStrength ?? 1.0)
             : (node.loraStrength ?? 1.0)
         }`,
+        node.controlImage ? '📎参考图' : null,
+      ].filter(Boolean).join(' · ')
+    : isVideo
+    ? [
+        node.mode ? MODE_META[node.mode].label : '视频',
+        node.frames != null || node.fps != null ? `${node.frames ?? '?'}f/${node.fps ?? '?'}fps` : null,
+        node.seed != null ? `seed ${node.seed}` : null,
+        `${node.width}×${node.height}`,
       ].filter(Boolean).join(' · ')
     : [
         node.mode ? MODE_META[node.mode].label : '原创',
         node.seed != null ? `seed ${node.seed}` : null,
+        `${node.width}×${node.height}`,
         node.templateId ? `模板 ${node.templateId}` : null,
+        node.createdAt ? new Date(node.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : null,
       ]
         .filter(Boolean)
         .join(' · ');
