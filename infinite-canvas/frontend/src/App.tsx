@@ -154,7 +154,7 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, userSelect: 'none' }}>无限画布</span>
-        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.28</span>
+        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.29</span>
 
         {/* 状态指示器 */}
         <span

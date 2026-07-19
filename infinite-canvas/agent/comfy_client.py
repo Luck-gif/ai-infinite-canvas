@@ -12,7 +12,8 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from typing import Any
+import asyncio
+from typing import Any, AsyncIterator
 
 import json
 import urllib.error
@@ -265,6 +266,67 @@ def wait_for_result(prompt_id: str, timeout: int = 600, poll: float = 2.0) -> di
     raise TimeoutError(f"prompt {prompt_id} 在 {timeout}s 内未完成")
 
 
+# ── v4.29 WebSocket 进度流 ──────────────────────────────────────────
+async def ws_listen(client_id: str, prompt_id: str, timeout: float = 600.0) -> "AsyncIterator[dict]":
+    """异步连接 ComfyUI WebSocket，yield 进度事件 dict（供 SSE 端点消费）。
+
+    使用 `websockets` 库（已在 requirements.txt）连接 ws://.../ws?clientId=...，
+    解析 ComfyUI WS 消息并筛选与 prompt_id 相关的事件：
+      - status: 队列位置
+      - execution_start: 开始执行
+      - executing: 哪个节点正在运行（node=null 时表示本 prompt 执行完成）
+      - progress: KSampler 步骤进度 (value/max)
+      - executed: 节点输出完成
+      - execution_error: 执行错误
+      结束事件: {"type":"done"} / {"type":"error", "message":...} / {"type":"timeout"}
+    """
+    import websockets  # type: ignore[import-untyped]
+    ws_url = COMFYUI_URL.replace("http://", "ws://").replace("https://", "wss://") + f"/ws?clientId={client_id}"
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    try:
+        async with websockets.connect(ws_url, ping_interval=30, close_timeout=10, max_size=2**20) as ws:
+            while (loop.time() - start) < timeout:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=8.0)
+                except asyncio.TimeoutError:
+                    yield {"type": "heartbeat", "prompt_id": prompt_id}
+                    continue
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                t = msg.get("type", "")
+                d = msg.get("data", {})
+                pid = d.get("prompt_id", "")
+                # 只关注我们的 prompt_id（status 消息无 prompt_id，始终推送）
+                if t == "status":
+                    yield {"type": "status", "queue_remaining": d.get("status", {}).get("exec_info", {}).get("queue_remaining", 0), "prompt_id": prompt_id}
+                elif pid != prompt_id and t not in ("status",):
+                    continue
+                elif t == "execution_start":
+                    yield {"type": "start", "prompt_id": prompt_id}
+                elif t == "execution_cached":
+                    yield {"type": "cached", "nodes": d.get("nodes", []), "prompt_id": prompt_id}
+                elif t == "executing":
+                    node_id = d.get("node")
+                    yield {"type": "executing", "node": node_id, "display_node": d.get("display_node"), "prompt_id": prompt_id}
+                    if node_id is None:
+                        yield {"type": "done", "prompt_id": prompt_id}
+                        return
+                elif t == "progress":
+                    yield {"type": "progress", "value": d["value"], "max": d["max"], "node": d.get("node"), "prompt_id": prompt_id}
+                elif t == "executed":
+                    yield {"type": "executed", "node": d.get("node"), "prompt_id": prompt_id}
+                elif t == "execution_error":
+                    yield {"type": "error", "message": str(d.get("exception_message", ""))[:300], "prompt_id": prompt_id}
+                    return
+            yield {"type": "timeout", "prompt_id": prompt_id}
+    except Exception as e:
+        yield {"type": "error", "message": str(e)[:200], "prompt_id": prompt_id}
+
+
+# ── 工作流蓝图构建 ──────────────────────────────────────────────
 def build_txt2img(
     checkpoint: str,
     prompt: str = "a beautiful scenery",

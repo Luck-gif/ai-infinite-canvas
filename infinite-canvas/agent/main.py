@@ -21,9 +21,9 @@ import asyncio
 import os
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 
@@ -306,6 +306,63 @@ async def upload(req: UploadRequest) -> UploadResponse:
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"上传 ComfyUI 失败: {str(e)[:160]}")
     return UploadResponse(name=name)
+
+
+@app.get("/api/stream/{prompt_id}")
+async def stream_progress(prompt_id: str, client_id: str | None = Query(None)):
+    """v4.29 SSE 端点：实时流式推送 ComfyUI WebSocket 进度事件。
+
+    前端 EventSource 连接此端点，接收生成过程中的实时进度：
+      - status: 队列位置变化
+      - start: 执行开始
+      - executing: 正在运行的节点 ID
+      - progress: KSampler 步进值 (value/max)
+      - executed: 某个节点输出完成
+      - done: 本 prompt 执行结束
+      - error: 执行异常
+
+    用法（前端）：
+      const es = new EventSource(`/api/stream/${prompt_id}`);
+      es.onmessage = (e) => { const ev = JSON.parse(e.data); ... };
+    """
+    cid = client_id or cc._DEFAULT_CLIENT_ID
+
+    async def _gen():
+        try:
+            async for event in cc.ws_listen(cid, prompt_id):
+                import json as _json
+                yield f"data: {_json.dumps(event, default=str)}\n\n"
+        except Exception as e:
+            import json as _json
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)[:200], 'prompt_id': prompt_id})}\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/result/{prompt_id}")
+async def get_result(prompt_id: str) -> dict:
+    """v4.29 轮询获取生成结果（供 SSE done 事件后调用）。"""
+    try:
+        result = await asyncio.to_thread(cc.wait_for_result, prompt_id)
+        images: list[str] = []
+        for node_out in result.get("outputs", {}).values():
+            for img in node_out.get("images", []):
+                images.append(img.get("filename", ""))
+            for g in node_out.get("gifs", []):
+                images.append(g.get("filename", ""))
+        return {"prompt_id": prompt_id, "images": images, "status": "success"}
+    except TimeoutError:
+        return {"prompt_id": prompt_id, "images": [], "status": "timeout"}
+    except Exception as e:
+        return {"prompt_id": prompt_id, "images": [], "status": "error", "message": str(e)[:200]}
 
 
 @app.get("/health")

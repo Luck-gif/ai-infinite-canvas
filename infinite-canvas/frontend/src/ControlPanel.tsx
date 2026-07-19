@@ -1,8 +1,8 @@
 // 无限画布 · 控制面板：自然语言 + 参数面板 → /api/intent → /api/generate → 画布节点
 // 支持：模型/尺寸/步数/CFG/批量/种子/负向提示词；图生图（上传或选中节点为输入 + denoise）
-// v4.27: 折叠分组 / Enter键提交 / 错误自动消失 / 模式标签优化
+// v4.29: WebSocket 实时进度条（SSE → EventSource 流式推送）
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { parseIntent, generate, previewWorkflow, uploadImage, imageUrl, listLoras, listControlnets } from './api';
+import { parseIntent, generate, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets } from './api';
 import { useCanvasStore } from './store';
 import { DEFAULT_GEN_PARAMS } from './types';
 import type { IntentResponse, GenMode, GenParams, CanvasNode, Link } from './types';
@@ -49,6 +49,8 @@ export function ControlPanel() {
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // v4.29: WebSocket 实时进度（SSE → EventSource）
+  const [progress, setProgress] = useState<{ value: number; max: number; node: string; phase: string } | null>(null);
   const [p, setP] = useState<GenParams>({ ...DEFAULT_GEN_PARAMS });
   const [randomSeed, setRandomSeed] = useState(true);
   const [uploadName, setUploadName] = useState<string | null>(null);
@@ -312,15 +314,15 @@ export function ControlPanel() {
         setLiveWorkflow(null);
       }
 
-      // 4) 生成
-      setPhase('生成中…');
+      // 4) 生成（v4.29: 非阻塞提交 + SSE 实时进度 + 轮询取结果）
+      setPhase('提交中…');
       const res = await generate({
         intent: intentPayload,
-        wait: true,
+        wait: false,  // 非阻塞：立即返回 prompt_id
         frames: p.frames,
         fps: p.fps,
         seed,
-        batch_size: p.mode === 'txt2img' ? p.batchSize : 1, // 图生图/重绘/扩图均单张
+        batch_size: p.mode === 'txt2img' ? p.batchSize : 1,
         input_image: inputImage,
         denoise: p.denoise,
         mask_image: maskImage,
@@ -328,15 +330,73 @@ export function ControlPanel() {
         outpaint_direction: p.mode === 'outpaint' ? p.outpaintDir : undefined,
         outpaint_pixels: p.mode === 'outpaint' ? p.outpaintPixels : undefined,
       });
-      if (res.status !== 'success' || res.images.length === 0) {
-        setError('生成未返回图片：' + (res.issues.join('；') || res.status));
+      const promptId = res.prompt_id;
+      if (!promptId) {
+        setError('生成失败：未返回 prompt_id');
         return;
       }
+      setPhase('接收实时进度…');
+
+      // v4.29: SSE 实时进度 + 等待完成 + 拉取结果
+      const result = await new Promise<{ images: string[] }>((resolve, reject) => {
+        const es = new EventSource('/api/stream/' + promptId);
+        es.onmessage = (e) => {
+          try {
+            const ev = JSON.parse(e.data);
+            if (ev.type === 'progress') {
+              setProgress({ value: ev.value, max: ev.max, node: ev.node || '', phase: `采样 ${ev.value}/${ev.max}` });
+            } else if (ev.type === 'executing') {
+              if (ev.node) {
+                setPhase(`运行节点 ${ev.node}…`);
+                setProgress((prev) => prev ? { ...prev, phase: `运行节点 ${ev.node}` } : null);
+              }
+            } else if (ev.type === 'start') {
+              setPhase('ComfyUI 开始执行…');
+            } else if (ev.type === 'done') {
+              es.close();
+              setPhase('拉取结果…');
+              setProgress(null);
+              // 轮询获取最终出图
+              fetchResult(promptId)
+                .then((r) => { if (r.images.length > 0) resolve(r); else reject(new Error('未出图')); })
+                .catch(reject);
+            } else if (ev.type === 'error') {
+              es.close();
+              setProgress(null);
+              reject(new Error(ev.message || 'ComfyUI 执行出错'));
+            } else if (ev.type === 'timeout') {
+              es.close();
+              setProgress(null);
+              reject(new Error('生成超时'));
+            }
+          } catch {
+            // 解析失败静默
+          }
+        };
+        es.onerror = () => {
+          es.close();
+          setProgress(null);
+          // EventSource 有时触发 onerror 后自动重连；对于非阻塞生成，仅当 10 秒无消息时认为断连
+          setTimeout(() => {
+            setPhase('拉取结果（备选）…');
+            fetchResult(promptId)
+              .then((r) => { if (r.images.length > 0) resolve(r); else reject(new Error('未出图')); })
+              .catch(reject);
+          }, 2000);
+        };
+        setTimeout(() => { es.close(); reject(new Error('生成超时（240s）')); }, 240_000);
+      });
+
+      if (result.images.length === 0) {
+        setError('生成未返回图片');
+        return;
+      }
+      const images = result.images;
 
       // 5) 落图到画布（扩图按方向贴源节点旁；其余网格散布）
-      const meta = (res.meta || {}) as Record<string, unknown>;
-      const outW = Number(meta.out_w) || p.width;
-      const outH = Number(meta.out_h) || p.height;
+      const templateId = res.template_id || 'unknown';
+      const outW = p.width;
+      const outH = p.height;
       const dw = DISPLAY_W;
       const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
       const parentId =
@@ -344,7 +404,6 @@ export function ControlPanel() {
 
       const isOutpaint = p.mode === 'outpaint' && selectedNode && !uploadName;
       if (isOutpaint && selectedNode) {
-        // 扩图：新节点设 parentId=源节点，按方向贴在其旁
         const pad = 60;
         const dir = p.outpaintDir;
         let nx = selectedNode.x, ny = selectedNode.y;
@@ -354,9 +413,9 @@ export function ControlPanel() {
         else if (dir === 'up') ny = selectedNode.y - dh - pad;
         addNode({
           id: crypto.randomUUID(),
-          filename: res.images[0],
+          filename: images[0],
           prompt: (intentPayload.params as { prompt?: string })?.prompt || text,
-          templateId: res.template_id,
+          templateId,
           x: nx, y: ny, width: dw, height: dh,
           mode: 'outpaint',
           parentId: selectedNode.id,
@@ -366,7 +425,7 @@ export function ControlPanel() {
         });
       } else {
         const base = nodeCount;
-        res.images.forEach((fn, i) => {
+        images.forEach((fn, i) => {
           const idx = base + i;
           const col = idx % 4;
           const row = Math.floor(idx / 4);
@@ -374,7 +433,7 @@ export function ControlPanel() {
             id: crypto.randomUUID(),
             filename: fn,
             prompt: (intentPayload.params as { prompt?: string })?.prompt || text,
-            templateId: res.template_id,
+            templateId,
             x: 60 + col * (dw + 40) + (i % 2) * 18,
             y: 60 + row * (dh + 70),
             width: dw,
@@ -591,6 +650,27 @@ export function ControlPanel() {
           ? (phase || '处理中…')
           : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : '生成 ▶'}
       </button>
+
+      {/* v4.29: 实时进度条 */}
+      {loading && progress && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: theme.text.dim, marginBottom: 4 }}>{progress.phase}</div>
+          <div style={{ height: 4, borderRadius: 2, background: 'rgba(79,140,255,0.15)', overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${Math.min(100, (progress.value / progress.max) * 100)}%`,
+                borderRadius: 2,
+                background: 'linear-gradient(90deg, #4f8cff, #a06bff)',
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 10, color: theme.text.tiny, marginTop: 2, textAlign: 'right' }}>
+            {progress.value}/{progress.max}
+          </div>
+        </div>
+      )}
 
       {error && <div style={errStyle}>{error}</div>}
 

@@ -99,3 +99,10 @@ export async function listControlnets(): Promise<{ controlnets: string[]; unionT
   const j = (await res.json()) as { controlnets?: string[]; union_types?: string[] };
   return { controlnets: j.controlnets ?? [], unionTypes: j.union_types ?? [] };
 }
+
+/** v4.29 轮询获取生成结果（SSE done 之后调用）。 */
+export async function fetchResult(promptId: string): Promise<{ images: string[]; status: string; message?: string }> {
+  const res = await fetch(`${BASE}/result/${promptId}`);
+  if (!res.ok) throw new Error(`[${res.status}] fetchResult`);
+  return res.json() as Promise<{ images: string[]; status: string; message?: string }>;
+}
