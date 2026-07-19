@@ -76,6 +76,10 @@ export function ControlPanel() {
   const [styleUploadName, setStyleUploadName] = useState<string | null>(null);
   const [styleUploadPreview, setStyleUploadPreview] = useState<string | null>(null);
 
+  // v4.36: 场景一致性 - 场景参考图独立上传
+  const [sceneUploadName, setSceneUploadName] = useState<string | null>(null);
+  const [sceneUploadPreview, setSceneUploadPreview] = useState<string | null>(null);
+
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
   const [selectedOpen, setSelectedOpen] = useState(true);
@@ -298,6 +302,10 @@ export function ControlPanel() {
       set('width', 1024);
       set('height', 1024);
     }
+    if (m === 'scene_consistency') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -315,7 +323,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -398,6 +406,18 @@ export function ControlPanel() {
         styleImage = styleUploadName;
       }
 
+      // v4.36: 场景一致性 - 场景参考图
+      let sceneImage: string | null = null;
+      if (p.mode === 'scene_consistency') {
+        if (!sceneUploadName) {
+          setError('场景一致性需要上传一张场景参考图（例如森林、城市、海滩、室内等环境图片）');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+        sceneImage = sceneUploadName;
+      }
+
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
       setPhase('预览工作流…');
       try {
@@ -422,6 +442,8 @@ export function ControlPanel() {
           style_image: styleImage,
           style_weight: p.styleWeight,
           composition_weight: p.compositionWeight,
+          scene_image: sceneImage,
+          scene_weight: p.sceneWeight,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -452,6 +474,8 @@ export function ControlPanel() {
         style_image: styleImage,
         style_weight: p.styleWeight,
         composition_weight: p.compositionWeight,
+        scene_image: sceneImage,
+        scene_weight: p.sceneWeight,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -523,7 +547,7 @@ export function ControlPanel() {
       const dw = DISPLAY_W;
       const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
       const parentId =
-        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency') && selectedNode && !uploadName ? selectedNode.id : null;
+        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency') && selectedNode && !uploadName ? selectedNode.id : null;
 
       const isOutpaint = p.mode === 'outpaint' && selectedNode && !uploadName;
       if (isOutpaint && selectedNode) {
@@ -609,6 +633,7 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
         <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
         <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
+        <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景一致" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -873,6 +898,60 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.36: 场景一致性 IPAdapterApply */}
+      {p.mode === 'scene_consistency' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>场景一致性 · IPAdapter</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            上传一张场景参考图（如森林、城市、海滩、室内空间），保持场景的整体布局和空间结构，
+            在提示词中自由替换内容元素。适合构建系列场景图。
+          </div>
+
+          <div style={labelSm}>场景参考图</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            {sceneUploadName ? '更换场景图' : '上传场景参考图'}
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                (async () => {
+                  if (!f) return;
+                  setError(null);
+                  try {
+                    const dataUrl = await fileToBase64(f);
+                    setSceneUploadPreview(dataUrl);
+                    const name = await uploadImage(`scene_${Date.now()}_${f.name}`, dataUrl);
+                    setSceneUploadName(name);
+                  } catch { setError('场景图上传失败'); }
+                })();
+              }} />
+          </label>
+          {sceneUploadPreview && (
+            <div style={{ marginTop: 8 }}>
+              <img src={sceneUploadPreview} alt="场景参考"
+                style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 6, border: `1px solid ${theme.border.subtle}` }} />
+              <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
+                {sceneUploadName}
+              </div>
+            </div>
+          )}
+          {!sceneUploadName && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.accent.amber }}>请上传场景参考图</div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <SliderRow
+              label="场景保持力 scene_weight"
+              value={p.sceneWeight}
+              min={0.1} max={1.5} step={0.05}
+              onChange={(v) => set('sceneWeight', v)}
+              fmt={(v) => v.toFixed(2)} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            推荐 0.5-0.8；越低越像提示词原图，越高场景结构越强
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -952,7 +1031,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

@@ -50,10 +50,13 @@ TEMPLATES = [
     {"id": "style_consistency_sdxl", "name": "风格一致性 · NoobAI-XL + IPAdapterStyle (v4.35)",
      "category": "style_consistency", "model": "sdxl", "license": "OpenRAIL++-M / Apache 2.0",
      "params": {"steps": 20, "cfg": 7.0, "style_weight": 0.8, "composition_weight": 0.3, "sampler": "euler", "scheduler": "normal"}},
+    {"id": "scene_consistency_sdxl", "name": "场景一致性 · NoobAI-XL + IPAdapter (v4.36)",
+     "category": "scene_consistency", "model": "sdxl", "license": "OpenRAIL++-M / Apache 2.0",
+     "params": {"steps": 20, "cfg": 7.0, "scene_weight": 0.7, "sampler": "euler", "scheduler": "normal"}},
 ]
 
 # MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性，v4.34 多图融合）
-SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend", "style_consistency"}
+SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency", "image_blend", "style_consistency", "scene_consistency"}
 
 
 def list_templates() -> list[dict]:
@@ -132,6 +135,8 @@ def build_workflow(
     style_image: str | None = None,
     style_weight: float = 0.8,
     composition_weight: float = 0.3,
+    scene_image: str | None = None,
+    scene_weight: float = 0.7,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """意图 → 模板 → 参数填充 → workflow JSON。
 
@@ -309,6 +314,27 @@ def build_workflow(
         meta["style_image"] = style_image
         meta["style_weight"] = sw
         meta["composition_weight"] = cw
+        meta["workflow_graph"] = cc.workflow_to_graph(wf)
+        return template_id, wf, meta
+
+    # ── v4.36: 场景一致性（Phase 8）──
+    if action == "scene_consistency":
+        template_id = "scene_consistency_sdxl"
+        if not scene_image:
+            return _fallback(action, "scene_consistency 需要 scene_image（先上传场景参考图）", prompt, width, height)
+        steps = int(params.get("steps") or 20)
+        cfg = float(params.get("cfg") or 7.0)
+        sw = float(params.get("scene_weight") or scene_weight)
+        wf = cc.build_scene_consistency(
+            scene_image=scene_image, checkpoint=NOOBAI_CKPT,
+            prompt=prompt, negative=negative,
+            width=width, height=height,
+            steps=steps, cfg=cfg, seed=seed,
+            scene_weight=sw,
+        )
+        meta["model_files"] = {"checkpoint": NOOBAI_CKPT}
+        meta["scene_image"] = scene_image
+        meta["scene_weight"] = sw
         meta["workflow_graph"] = cc.workflow_to_graph(wf)
         return template_id, wf, meta
 

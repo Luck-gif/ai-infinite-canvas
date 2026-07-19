@@ -109,6 +109,8 @@ class GenerateRequest(BaseModel):
     style_image: str | None = None    # 风格一致性：风格参考图（v4.35）
     style_weight: float = 0.8         # 风格一致性：风格影响权重（v4.35）
     composition_weight: float = 0.3   # 风格一致性：构图影响权重（v4.35）
+    scene_image: str | None = None     # 场景一致性：场景参考图（v4.36）
+    scene_weight: float = 0.7          # 场景一致性：场景保持力（v4.36）
     wait: bool = False  # 为 True 时同步轮询 /history 返回真实出图（端到端）
 
 
@@ -288,7 +290,8 @@ async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
             req.loras, req.controlnets, req.frames, req.fps,
             req.face_image, req.face_weight,
             req.blend_image_b, req.blend_mode, req.blend_factor,
-            req.style_image, req.style_weight, req.composition_weight)
+            req.style_image, req.style_weight, req.composition_weight,
+            req.scene_image, req.scene_weight)
 
     # 兼容旧链路：用 checkpoint（缺省自动选共享库首个）
     template_id = "txt2img_sdxl"
