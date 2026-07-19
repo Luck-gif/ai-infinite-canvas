@@ -71,7 +71,6 @@ export function ControlPanel() {
 
   // v4.34: 多图融合 - 图片B独立上传
   const [blendUploadNameB, setBlendUploadNameB] = useState<string | null>(null);
-  const [blendUploadPreviewB, setBlendUploadPreviewB] = useState<string | null>(null);
 
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
@@ -161,9 +160,7 @@ export function ControlPanel() {
     if (!file) return;
     setError(null);
     try {
-      const dataUrl = await fileToBase64(file);
-      setBlendUploadPreviewB(dataUrl);
-      const name = await uploadImage(`blend_${Date.now()}_${file.name}`, dataUrl);
+      const name = await uploadImage(`blend_${Date.now()}_${file.name}`, await fileToBase64(file));
       setBlendUploadNameB(name);
     } catch (e) {
       setError('融合图B上传失败：' + ((e as Error)?.message || String(e)));

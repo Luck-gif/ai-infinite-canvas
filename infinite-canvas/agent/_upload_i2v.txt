@@ -1,2 +1,0 @@
-﻿uploaded -> ic_test_src.png
-rewrote _wf/img2vid.json with input_image = ic_test_src.png

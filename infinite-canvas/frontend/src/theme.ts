@@ -27,6 +27,7 @@ export const theme = {
     blueGhost: 'rgba(79,140,255,0.06)',
     backdrop: 'rgba(3,6,12,0.72)',
     popup: 'rgba(14,18,28,0.96)',
+    surface: '#0e1320',
   },
   border: {
     default: '#1c2230',
@@ -76,6 +77,7 @@ export const theme = {
     night: '#2a3b55',
     gold: '#b07d2b',
     pastel: '#9bbdff',
+    danger: '#ff9b9b',
   },
   danger: {
     bg: '#2a1416',

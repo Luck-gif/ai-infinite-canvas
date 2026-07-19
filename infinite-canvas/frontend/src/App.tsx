@@ -26,11 +26,8 @@ export function App() {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const clear = useCanvasStore((s) => s.clear);
-  const removeNode = useCanvasStore((s) => s.removeNode);
   const replaceAll = useCanvasStore((s) => s.replaceAll);
   const selectedId = useCanvasStore((s) => s.selectedId);
-  const selectedIds = useCanvasStore((s) => s.selectedIds);
-  const getAllSelectedIds = useCanvasStore((s) => s.getAllSelectedIds);
   const nodes = useCanvasStore((s) => s.nodes);
   const liveWorkflow = useCanvasStore((s) => s.liveWorkflow);
   const viewWorkflow = useCanvasStore((s) => s.viewWorkflow);
@@ -154,7 +151,7 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, userSelect: 'none' }}>无限画布</span>
-        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.29</span>
+        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.34</span>
 
         {/* 状态指示器 */}
         <span

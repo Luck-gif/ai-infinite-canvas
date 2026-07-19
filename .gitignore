@@ -9,6 +9,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+*.tsbuildinfo
 
 # ── 环境密钥 ──
 .env
@@ -52,13 +53,11 @@ infinite-canvas/agent/outputs/
 *.zip
 
 # ── 开发调试产物 ──
-infinite-canvas/agent/_dump_*.txt
-infinite-canvas/agent/_find_*.txt
-infinite-canvas/agent/_check_gen.txt
-infinite-canvas/agent/_gen_wf.txt
-infinite-canvas/agent/_models.txt
-infinite-canvas/agent/_upload_i2v.txt
-infinite-canvas/agent/_video_nodes_dump.txt
+infinite-canvas/agent/_*.txt
+infinite-canvas/agent/_*.log
+infinite-canvas/agent/_*.json
+infinite-canvas/agent/_*.py
+infinite-canvas/agent/agent_api_test.log
 
 # ── Python 缓存 ──
 .mypy_cache/

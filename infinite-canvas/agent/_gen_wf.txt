@@ -1,2 +1,0 @@
-﻿wrote _wf/txt2vid.json nodes: 13
-wrote _wf/img2vid.json nodes: 14
