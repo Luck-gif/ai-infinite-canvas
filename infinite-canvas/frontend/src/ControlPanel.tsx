@@ -80,6 +80,10 @@ export function ControlPanel() {
   const [sceneUploadName, setSceneUploadName] = useState<string | null>(null);
   const [sceneUploadPreview, setSceneUploadPreview] = useState<string | null>(null);
 
+  // v4.37: 道具一致性 - 道具参考图独立上传
+  const [propUploadName, setPropUploadName] = useState<string | null>(null);
+  const [propUploadPreview, setPropUploadPreview] = useState<string | null>(null);
+
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
   const [selectedOpen, setSelectedOpen] = useState(true);
@@ -306,6 +310,10 @@ export function ControlPanel() {
       set('width', 1024);
       set('height', 1024);
     }
+    if (m === 'prop_consistency') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -323,7 +331,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency' || p.mode === 'image_blend' || p.mode === 'style_consistency' || p.mode === 'scene_consistency' || p.mode === 'prop_consistency') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -418,6 +426,18 @@ export function ControlPanel() {
         sceneImage = sceneUploadName;
       }
 
+      // v4.37: 道具一致性 - 道具参考图
+      let propImage: string | null = null;
+      if (p.mode === 'prop_consistency') {
+        if (!propUploadName) {
+          setError('道具一致性需要上传一张道具参考图（例如武器、饰品、家具、服装单品等物品图片）');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+        propImage = propUploadName;
+      }
+
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
       setPhase('预览工作流…');
       try {
@@ -444,6 +464,8 @@ export function ControlPanel() {
           composition_weight: p.compositionWeight,
           scene_image: sceneImage,
           scene_weight: p.sceneWeight,
+          prop_image: propImage,
+          prop_weight: p.propWeight,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -476,6 +498,8 @@ export function ControlPanel() {
         composition_weight: p.compositionWeight,
         scene_image: sceneImage,
         scene_weight: p.sceneWeight,
+        prop_image: propImage,
+        prop_weight: p.propWeight,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -634,6 +658,7 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
         <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
         <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景一致" />
+        <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具一致" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -952,6 +977,60 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.37: 道具一致性 IPAdapter */}
+      {p.mode === 'prop_consistency' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>道具一致性 · IPAdapter</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            上传一张道具/物品参考图（如武器、家具、装饰品、服装单品），保持道具的
+            纹理、材质和视觉特征。适合生成不同角度或场景下的同一物品系列图。
+          </div>
+
+          <div style={labelSm}>道具参考图</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            {propUploadName ? '更换道具图' : '上传道具参考图'}
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                (async () => {
+                  if (!f) return;
+                  setError(null);
+                  try {
+                    const dataUrl = await fileToBase64(f);
+                    setPropUploadPreview(dataUrl);
+                    const name = await uploadImage(`prop_${Date.now()}_${f.name}`, dataUrl);
+                    setPropUploadName(name);
+                  } catch { setError('道具图上传失败'); }
+                })();
+              }} />
+          </label>
+          {propUploadPreview && (
+            <div style={{ marginTop: 8 }}>
+              <img src={propUploadPreview} alt="道具参考"
+                style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 6, border: `1px solid ${theme.border.subtle}` }} />
+              <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
+                {propUploadName}
+              </div>
+            </div>
+          )}
+          {!propUploadName && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.accent.amber }}>请上传道具参考图</div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <SliderRow
+              label="道具保持力 prop_weight"
+              value={p.propWeight}
+              min={0.1} max={1.5} step={0.05}
+              onChange={(v) => set('propWeight', v)}
+              fmt={(v) => v.toFixed(2)} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            推荐 0.5-0.8；越低道具特征越弱，越高道具纹理材质越强
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -1031,7 +1110,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : p.mode === 'prop_consistency' ? '道具一致 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

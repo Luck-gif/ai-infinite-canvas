@@ -540,6 +540,74 @@ def build_scene_consistency(
     }
 
 
+def build_prop_consistency(
+    prop_image: str,
+    checkpoint: str,
+    prompt: str = "a single object, product photo",
+    negative: str = "",
+    width: int = 1024,
+    height: int = 1024,
+    steps: int = 20,
+    cfg: float = 7.0,
+    seed: int = 0,
+    prop_weight: float = 0.7,
+) -> dict[str, Any]:
+    """构造道具一致性工作流（v4.37, Phase 8）。
+
+    使用 IPAdapter（通用图像条件化）实现道具纹理/材质/色彩保持：
+    1. IPAdapterModelLoader 加载 ip-adapter-plus_sd15 模型
+    2. LoadImage 加载道具参考图
+    3. CheckpointLoaderSimple 加载 SDXL checkpoint
+    4. IPAdapterUnifiedLoader 加载 PLUS preset（高道具强度）
+    5. IPAdapter：prop_weight 控制道具特征保持强度
+    6. CLIPTextEncode(positive/negative)
+    7. KS 采样 → VAEDecode → SaveImage
+    """
+    prefix = uuid.uuid4().hex[:8]
+    return {
+        "1": {"class_type": "IPAdapterModelLoader",
+              "inputs": {"ipadapter_file": "ip-adapter-plus_sd15.safetensors"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": prop_image}},
+        "3": {"class_type": "CheckpointLoaderSimple",
+              "inputs": {"ckpt_name": checkpoint}},
+        "4": {"class_type": "IPAdapterUnifiedLoader",
+              "inputs": {"model": ["3", 0], "preset": "PLUS (high strength)"}},
+        "5": {"class_type": "CLIPTextEncode",
+              "inputs": {"text": prompt, "clip": ["3", 1]}},
+        "6": {"class_type": "CLIPTextEncode",
+              "inputs": {"text": negative, "clip": ["3", 1]}},
+        "7": {"class_type": "IPAdapter",
+              "inputs": {
+                  "model": ["3", 0],
+                  "ipadapter": ["4", 1],
+                  "image": ["2", 0],
+                  "weight": prop_weight,
+                  "weight_type": "standard",
+                  "start_at": 0.0,
+                  "end_at": 1.0,
+              }},
+        "8": {"class_type": "EmptyLatentImage",
+              "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "9": {"class_type": "KSampler",
+              "inputs": {
+                  "model": ["7", 0],
+                  "seed": seed,
+                  "steps": steps,
+                  "cfg": cfg,
+                  "sampler_name": "euler",
+                  "scheduler": "normal",
+                  "positive": ["5", 0],
+                  "negative": ["6", 0],
+                  "latent_image": ["8", 0],
+                  "denoise": 1.0,
+              }},
+        "10": {"class_type": "VAEDecode",
+               "inputs": {"samples": ["9", 0], "vae": ["3", 2]}},
+        "11": {"class_type": "SaveImage",
+               "inputs": {"images": ["10", 0], "filename_prefix": f"infinite_canvas_prop/{prefix}"}},
+    }
+
+
 def build_image_blend(
     image_a: str,
     image_b: str,
