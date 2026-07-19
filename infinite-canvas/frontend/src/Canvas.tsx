@@ -1,5 +1,5 @@
-// v4.20 节点拖拽连线交互：在 v4.19 血缘可视化基础上，
-// 增加「节点右侧锚点拖拽 → 建立手动关联」能力，连线持久化、小地图同步。
+// v4.28 画布多选框选：在 v4.20 拖拽连线基础上，
+// 增加「Shift+点击多选 / 拖拽空白框选 / 批量删除」能力。
 import { useEffect, useRef, useState } from 'react';
 import {
   Stage,
@@ -40,11 +40,13 @@ function center(n: CanvasNode) {
 interface NodeImageProps {
   node: CanvasNode;
   selected: boolean;
+  multiSelected: boolean;
   linkingFrom: string | null;
   onStartLink: (id: string) => void;
   onDragMove: (id: string, x: number, y: number) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onClick: (id: string) => void;
+  onShiftClick: (id: string) => void;
   onHover: (node: CanvasNode, e: KonvaEventObject<MouseEvent>) => void;
   onHoverEnd: () => void;
 }
@@ -52,11 +54,13 @@ interface NodeImageProps {
 function NodeImage({
   node,
   selected,
+  multiSelected,
   linkingFrom,
   onStartLink,
   onDragMove,
   onDragEnd,
   onClick,
+  onShiftClick,
   onHover,
   onHoverEnd,
 }: NodeImageProps) {
@@ -142,7 +146,11 @@ function NodeImage({
       onMouseLeave={onHoverEnd}
       onClick={(e) => {
         e.cancelBubble = true;
-        onClick(node.id);
+        if (e.evt.shiftKey) {
+          onShiftClick(node.id);
+        } else {
+          onClick(node.id);
+        }
       }}
     >
       <Rect
@@ -150,8 +158,8 @@ function NodeImage({
         height={node.height}
         cornerRadius={8}
         fill={isControl ? (node.controlKind === 'controlnet' ? theme.bg.controlnet : theme.bg.lora) : theme.bg.nodeCard}
-        stroke={selected ? theme.accent.blue : theme.border.subtle}
-        strokeWidth={selected ? 2.5 : 1.5}
+        stroke={selected || multiSelected ? (multiSelected && !selected ? theme.misc.selectMulti : theme.accent.blue) : theme.border.subtle}
+        strokeWidth={selected ? 2.5 : multiSelected ? 2 : 1.5}
         shadowColor="#000"
         shadowBlur={8}
         shadowOpacity={0.4}
@@ -211,10 +219,14 @@ export function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
   const links = useCanvasStore((s) => s.links);
   const selectedId = useCanvasStore((s) => s.selectedId);
+  const selectedIds = useCanvasStore((s) => s.selectedIds);
   const pendingFocus = useCanvasStore((s) => s.pendingFocus);
   const dragMove = useCanvasStore((s) => s.dragMove);
   const commitMove = useCanvasStore((s) => s.commitMove);
   const select = useCanvasStore((s) => s.select);
+  const toggleSelectNode = useCanvasStore((s) => s.toggleSelectNode);
+  const setSelectedIds = useCanvasStore((s) => s.setSelectedIds);
+  const clearSelection = useCanvasStore((s) => s.clearSelection);
   const addLink = useCanvasStore((s) => s.addLink);
 
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
@@ -222,6 +234,9 @@ export function Canvas() {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [linkCursor, setLinkCursor] = useState<{ x: number; y: number } | null>(null);
+
+  // v4.28 框选状态
+  const [boxSelect, setBoxSelect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
   const stageRef = useRef<Konva.Stage>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -277,18 +292,65 @@ export function Canvas() {
 
   const onStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     if (e.target === e.target.getStage()) {
+      // v4.28 在空白区域按下 → 开始框选
+      if (e.evt.button === 0) {
+        // 检查是否按住了中键/右键（用于平移，不触发框选）
+        const stage = stageRef.current;
+        if (stage) {
+          const pos = stage.getRelativePointerPosition();
+          if (pos) {
+            setBoxSelect({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y });
+          }
+        }
+      }
       select(null);
       setHover(null);
     }
   };
 
   const onStageMouseMove = () => {
+    // v4.28 框选拖动中：更新 rect
+    if (boxSelect && stageRef.current) {
+      const pos = stageRef.current.getRelativePointerPosition();
+      if (pos) {
+        setBoxSelect((prev) => prev ? { ...prev, x2: pos.x, y2: pos.y } : null);
+      }
+      return;
+    }
     if (!linkingFrom || !stageRef.current) return;
     const pos = stageRef.current.getRelativePointerPosition();
     if (pos) setLinkCursor({ x: pos.x, y: pos.y });
   };
 
   const onStageMouseUp = () => {
+    // v4.28 完成框选
+    if (boxSelect) {
+      const { x1, y1, x2, y2 } = boxSelect;
+      const rx = Math.min(x1, x2);
+      const ry = Math.min(y1, y2);
+      const rw = Math.abs(x2 - x1);
+      const rh = Math.abs(y2 - y1);
+      // 只有拖动超过 4px 才视为框选
+      if (rw > 4 || rh > 4) {
+        const hitIds = nodes
+          .filter(
+            (n) =>
+              n.x + n.width >= rx &&
+              n.x <= rx + rw &&
+              n.y + n.height >= ry &&
+              n.y <= ry + rh,
+          )
+          .map((n) => n.id);
+        if (hitIds.length > 0) {
+          setSelectedIds(hitIds);
+        } else {
+          clearSelection();
+        }
+      }
+      setBoxSelect(null);
+      return;
+    }
+
     if (!linkingFrom || !stageRef.current) return;
     const pos = stageRef.current.getRelativePointerPosition();
     let targetId: string | null = null;
@@ -391,21 +453,40 @@ export function Canvas() {
         </Layer>
         {/* 节点层 */}
         <Layer>
-          {nodes.map((n) => (
+          {nodes.map((n) => {
+            const isMultiSelected = selectedIds.includes(n.id) && selectedIds.length >= 2;
+            return (
             <NodeImage
               key={n.id}
               node={n}
               selected={n.id === selectedId}
+              multiSelected={isMultiSelected}
               linkingFrom={linkingFrom}
               onStartLink={startLink}
               onDragMove={dragMove}
               onDragEnd={commitMove}
               onClick={(id) => select(id)}
+              onShiftClick={(id) => toggleSelectNode(id)}
               onHover={onHover}
               onHoverEnd={() => setHover(null)}
             />
-          ))}
+          )})}
         </Layer>
+        {/* v4.28 框选矩形叠加层 */}
+        {boxSelect && (
+          <Layer listening={false}>
+            <Rect
+              x={Math.min(boxSelect.x1, boxSelect.x2)}
+              y={Math.min(boxSelect.y1, boxSelect.y2)}
+              width={Math.abs(boxSelect.x2 - boxSelect.x1)}
+              height={Math.abs(boxSelect.y2 - boxSelect.y1)}
+              fill="rgba(79,140,255,0.08)"
+              stroke="rgba(79,140,255,0.5)"
+              strokeWidth={1}
+              dash={[4, 3]}
+            />
+          </Layer>
+        )}
         </Stage>
       )}
 
@@ -452,7 +533,7 @@ export function Canvas() {
           userSelect: 'none',
         }}
       >
-        滚轮缩放 · 拖动节点移动 · 点节点右侧黄色锚点拖出连线建立关联
+        滚轮缩放 · 拖动节点移动 · Shift+点击多选 · 拖拽空白框选 · 点节点右侧锚点建立连线
       </div>
 
       {nodes.length > 0 && (

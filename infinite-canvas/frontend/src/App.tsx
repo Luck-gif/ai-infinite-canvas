@@ -29,6 +29,8 @@ export function App() {
   const removeNode = useCanvasStore((s) => s.removeNode);
   const replaceAll = useCanvasStore((s) => s.replaceAll);
   const selectedId = useCanvasStore((s) => s.selectedId);
+  const selectedIds = useCanvasStore((s) => s.selectedIds);
+  const getAllSelectedIds = useCanvasStore((s) => s.getAllSelectedIds);
   const nodes = useCanvasStore((s) => s.nodes);
   const liveWorkflow = useCanvasStore((s) => s.liveWorkflow);
   const viewWorkflow = useCanvasStore((s) => s.viewWorkflow);
@@ -123,13 +125,18 @@ export function App() {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
-      } else if (e.key === 'Delete' && selectedId) {
-        removeNode(selectedId);
+      } else if (e.key === 'Delete') {
+        // v4.28 支持多选批量删除
+        const allSelected = useCanvasStore.getState().getAllSelectedIds();
+        if (allSelected.length > 0) {
+          e.preventDefault();
+          allSelected.forEach((id) => useCanvasStore.getState().removeNode(id));
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, removeNode, selectedId]);
+  }, [undo, redo]);
 
   const connColor = conn === 'connected' ? theme.accent.green : conn === 'disconnected' ? theme.accent.amber : theme.text.label;
   const connLabel = conn === 'connected' ? '已连接' : conn === 'disconnected' ? '未连接' : conn === 'offline' ? '离线' : '检测中…';
@@ -147,7 +154,7 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, userSelect: 'none' }}>无限画布</span>
-        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.27</span>
+        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.28</span>
 
         {/* 状态指示器 */}
         <span

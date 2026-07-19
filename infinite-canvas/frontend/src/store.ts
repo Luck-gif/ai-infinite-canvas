@@ -1,4 +1,4 @@
-// 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化（Phase 1 验收）
+// 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
 import type { CanvasNode, Link, WorkflowGraph } from './types';
 
@@ -64,6 +64,8 @@ interface CanvasState {
   past: Snapshot[];
   future: Snapshot[];
   selectedId: string | null;
+  /** v4.28 多选框选：Shift+点击或框选追加的节点 ID 集合 */
+  selectedIds: string[];
   /** 聚焦请求（ControlPanel → Canvas 平移到某节点），用 nonce 触发重复点击 */
   pendingFocus: { id: string; nonce: number } | null;
   /** 工作流面板：生成前实时工作流（预览）；生成后清空 */
@@ -81,6 +83,14 @@ interface CanvasState {
   /** 拖动结束提交一次历史 */
   commitMove: (id: string, x: number, y: number) => void;
   select: (id: string | null) => void;
+  /** v4.28 Shift+点击切换节点在多选集中 */
+  toggleSelectNode: (id: string) => void;
+  /** v4.28 框选完成后设置多选集 */
+  setSelectedIds: (ids: string[]) => void;
+  /** v4.28 清除所有选中（单选 + 多选） */
+  clearSelection: () => void;
+  /** 获取当前所有选中节点 ID（单选 + 多选合并） */
+  getAllSelectedIds: () => string[];
   removeNode: (id: string) => void;
   undo: () => void;
   redo: () => void;
@@ -117,6 +127,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     past: [],
     future: [],
     selectedId: null,
+    selectedIds: [],
     pendingFocus: null,
     liveWorkflow: null,
     viewWorkflow: null,
@@ -142,7 +153,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       persist(get());
     },
 
-    select: (id) => set({ selectedId: id }),
+    select: (id) => set({ selectedId: id, selectedIds: [] }),
+
+    toggleSelectNode: (id) => {
+      const s = get();
+      // 如果已有单选且与 toggle 目标不同，保留单选节点一同进入多选
+      const base = s.selectedIds.length > 0 ? s.selectedIds
+        : s.selectedId && s.selectedId !== id ? [s.selectedId] : [];
+      const idx = base.indexOf(id);
+      const next = idx >= 0 ? base.filter((x) => x !== id) : [...base, id];
+      set({ selectedId: next.length === 1 ? next[0] : null, selectedIds: next.length >= 2 ? next : [] });
+    },
+
+    setSelectedIds: (ids) => {
+      set({ selectedId: ids.length === 1 ? ids[0] : null, selectedIds: ids.length >= 2 ? ids : [] });
+    },
+
+    clearSelection: () => set({ selectedId: null, selectedIds: [] }),
+
+    getAllSelectedIds: () => {
+      const s = get();
+      if (s.selectedIds.length > 0) return s.selectedIds;
+      if (s.selectedId) return [s.selectedId];
+      return [];
+    },
 
     requestFocus: (id) => set({ pendingFocus: { id, nonce: Date.now() } }),
 
@@ -152,6 +186,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
         nodes: s.nodes.filter((nd) => nd.id !== id),
         links: s.links.filter((l) => l.from !== id && l.to !== id),
         selectedId: s.selectedId === id ? null : s.selectedId,
+        selectedIds: s.selectedIds.filter((sid) => sid !== id),
       }));
       persist(get());
     },

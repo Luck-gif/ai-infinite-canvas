@@ -99,6 +99,8 @@ export const theme = {
   },
   misc: {
     edgeDim: '#56627f',
+    /** v4.28 多选框选颜色 */
+    selectMulti: '#5b9aff',
   },
   radius: {
     sm: 6,
