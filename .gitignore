@@ -71,3 +71,6 @@ infinite-canvas/agent/_video_nodes_dump.txt
 
 # ── CodeBuddy 项目数据（保留 skills，排除 teams/automations 运行时数据） ──
 .codebuddy/teams/
+
+# ── Playwright CLI 运行时 ──
+.playwright-cli/
