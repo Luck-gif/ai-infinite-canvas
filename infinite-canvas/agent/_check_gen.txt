@@ -1,0 +1,8 @@
+﻿
+=== T2V (8b6fc884-a17e-4a51-8bd1-a5eec00ea5ad) ===
+  status: {'status_str': 'success', 'completed': True, 'messages': [['execution_start', {'prompt_id': '8b6fc884-a17e-4a51-8bd1-a5eec00ea5ad', 'timestamp': 1784448823808}], ['execution_cached', {'nodes': [], 'prompt_id': '8b6fc884-a17e-4a51-8bd1-a5eec00ea5ad', 'timestamp': 1784448823809}], ['execution_success', {'prompt_id': '8b6fc884-a17e-4a51-8bd1-a5eec00ea5ad', 'timestamp': 1784448840398}]]} outputs nodes: ['video']
+  files: [('gif', 'ic_txt2vid_00001.mp4')]
+
+=== I2V (d2f85976-4432-4636-b879-fa9c8e6e1256) ===
+  status: {'status_str': 'success', 'completed': True, 'messages': [['execution_start', {'prompt_id': 'd2f85976-4432-4636-b879-fa9c8e6e1256', 'timestamp': 1784448891777}], ['execution_cached', {'nodes': ['clip', 'vae', 'neg'], 'prompt_id': 'd2f85976-4432-4636-b879-fa9c8e6e1256', 'timestamp': 1784448891788}], ['execution_success', {'prompt_id': 'd2f85976-4432-4636-b879-fa9c8e6e1256', 'timestamp': 1784448914369}]]} outputs nodes: ['video']
+  files: [('gif', 'ic_img2vid_00001.mp4')]

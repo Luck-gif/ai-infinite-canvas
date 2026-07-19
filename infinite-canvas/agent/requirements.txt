@@ -1,0 +1,12 @@
+# 无限画布 · 后端依赖（§4.0 / §8.1）
+# 运行
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+websockets>=13,<15
+httpx>=0.28,<1.0
+pydantic>=2.9,<3.0
+# 本地意图 LLM 客户端（Ollama qwen2.5:14b，§8.1.6 离线兜底）
+ollama>=0.4,<1.0
+# 配置 / 工具
+pyyaml>=6.0,<7.0
+pillow>=11.0,<12.0

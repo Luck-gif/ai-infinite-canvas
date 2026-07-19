@@ -1,0 +1,10 @@
+# 密钥与本地环境（§12.1：.env 不入库）
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# 临时日志/产物
+_*.log
+_*.json

@@ -1,0 +1,20 @@
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #070a12;
+}
+* {
+  box-sizing: border-box;
+}
+
+/* 工作流面板脉冲动画（生成中指示灯） */
+@keyframes wf-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.9); }
+}
+
+/* 无限画布滚动条：深色主题 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0e16; }
+::-webkit-scrollbar-thumb { background: #2a3142; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4560; }

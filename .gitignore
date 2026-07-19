@@ -1,0 +1,73 @@
+# ── 依赖 ──
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── 构建产物 ──
+dist/
+build/
+*.egg-info/
+
+# ── 环境密钥 ──
+.env
+.env.*
+!.env.example
+
+# ── 日志 ──
+*.log
+*_vite.out
+*_vite.err
+uvicorn.err.log
+uvicorn.out.log
+dev5180.log
+
+# ── IDE/工具 ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── 操作系统 ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── ComfyUI 产物 ──
+comfyui/
+ComfyUI/
+ai_comfyui_dd/
+
+# ── 生成物/输出 ──
+infinite-canvas/agent/outputs/
+*.mp4
+*.png
+*.jpg
+!**/test_*.png
+!**/ui_*.png
+
+# ── 内部源码快照 ──
+*.zip
+
+# ── 开发调试产物 ──
+infinite-canvas/agent/_dump_*.txt
+infinite-canvas/agent/_find_*.txt
+infinite-canvas/agent/_check_gen.txt
+infinite-canvas/agent/_gen_wf.txt
+infinite-canvas/agent/_models.txt
+infinite-canvas/agent/_upload_i2v.txt
+infinite-canvas/agent/_video_nodes_dump.txt
+
+# ── Python 缓存 ──
+.mypy_cache/
+.pytest_cache/
+.tox/
+
+# ── 工程师/调研内部资料（仅参考，不参与构建） ──
+不得读取，仅供工程师查看，不得作为开发依据/
+分析调研/
+
+# ── CodeBuddy 项目数据（保留 skills，排除 teams/automations 运行时数据） ──
+.codebuddy/teams/

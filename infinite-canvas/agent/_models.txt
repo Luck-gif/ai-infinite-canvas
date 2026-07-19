@@ -1,0 +1,23 @@
+﻿Wan22_Bernini_HIGH-Q4_K_M.gguf
+Wan22_Bernini_HIGH-Q5_K_M.gguf
+Wan22_Bernini_LOW-Q4_K_M.gguf
+Wan22_Bernini_LOW-Q5_K_M.gguf
+flux1-kontext-dev-Q5_K_M.gguf
+MelBandRoformer_fp16.safetensors
+Wan22_Bernini_HIGH_fp8_e4m3fn_scaled.safetensors
+Wan22_Bernini_LOW_fp8_e4m3fn_scaled.safetensors
+Wan2_1-T2V-1_3B_FlashVSR_fp32.safetensors
+Wan2_1_FlashVSR_LQ_proj_model_bf16.safetensors
+anima-base-v1.0.safetensors
+flux-2-klein\F2K-9b-darkBeastMar0326Latest_dbkleinv2BFS.safetensors
+flux-2-klein\flux-2-klein-9b-fp8.safetensors
+flux1-dev-kontext_fp8_scaled.safetensors
+qwen_image_2512_fp8_e4m3fn.safetensors
+qwen_image_edit_2509_fp8_e4m3fn.safetensors
+wan2.1_14B_SCAIL_2_fp8_scaled.safetensors
+wan2.2_bernini_r_high_noise_mxfp8.safetensors
+wan2.2_bernini_r_low_noise_mxfp8.safetensors
+wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+z_image_turbo_bf16.safetensors
+TOTAL 22

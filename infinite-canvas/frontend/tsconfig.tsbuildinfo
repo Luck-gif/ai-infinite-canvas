@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/canvas.tsx","./src/controlpanel.tsx","./src/errorboundary.tsx","./src/maskeditor.tsx","./src/api.ts","./src/graph.test.ts","./src/graph.ts","./src/main.tsx","./src/store.test.ts","./src/store.ts","./src/types.ts"],"version":"5.9.3"}
