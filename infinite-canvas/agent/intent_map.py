@@ -41,10 +41,13 @@ TEMPLATES = [
     {"id": "outpaint_sdxl", "name": "扩图 · NoobAI-XL (SDXL)",
      "category": "outpaint", "model": "sdxl", "license": "OpenRAIL++-M",
      "params": {"steps": 20, "cfg": 7.0, "denoise": 1.0, "grow_mask_by": 8, "sampler": "euler", "scheduler": "normal"}},
+    {"id": "face_consistency_sdxl", "name": "角色一致性 · NoobAI-XL + IPAdapterFaceID (v4.33)",
+     "category": "face_consistency", "model": "sdxl", "license": "OpenRAIL++-M / Apache 2.0",
+     "params": {"steps": 20, "cfg": 7.0, "face_weight": 0.8, "sampler": "euler", "scheduler": "normal"}},
 ]
 
-# MVP 已支持的 action（Phase 9 起含视频）
-SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid"}
+# MVP 已支持的 action（Phase 9 起含视频，v4.33 角色一致性）
+SUPPORTED_ACTIONS = {"txt2img", "img2img", "inpaint", "outpaint", "txt2vid", "img2vid", "face_consistency"}
 
 
 def list_templates() -> list[dict]:
@@ -115,6 +118,8 @@ def build_workflow(
     controlnets: list[dict[str, Any]] | None = None,
     frames: int | None = None,
     fps: int | None = None,
+    face_image: str | None = None,
+    face_weight: float = 0.8,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """意图 → 模板 → 参数填充 → workflow JSON。
 
@@ -230,6 +235,27 @@ def build_workflow(
             meta["loras"] = loras
         if controlnets:
             meta["controlnets"] = controlnets
+        meta["workflow_graph"] = cc.workflow_to_graph(wf)
+        return template_id, wf, meta
+
+    # ── v4.33: 角色一致性（Phase 8）──
+    if action == "face_consistency":
+        template_id = "face_consistency_sdxl"
+        if not face_image:
+            return _fallback(action, "face_consistency 需要 face_image（先上传参考人脸图）", prompt, width, height)
+        steps = int(params.get("steps") or 20)
+        cfg = float(params.get("cfg") or 7.0)
+        fw = float(params.get("face_weight") or face_weight)
+        wf = cc.build_face_consistency(
+            face_image=face_image, checkpoint=NOOBAI_CKPT,
+            prompt=prompt, negative=negative,
+            width=width, height=height,
+            steps=steps, cfg=cfg, seed=seed,
+            face_weight=fw,
+        )
+        meta["model_files"] = {"checkpoint": NOOBAI_CKPT}
+        meta["face_image"] = face_image
+        meta["face_weight"] = fw
         meta["workflow_graph"] = cc.workflow_to_graph(wf)
         return template_id, wf, meta
 

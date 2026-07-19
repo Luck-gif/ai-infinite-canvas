@@ -58,6 +58,10 @@ export function ControlPanel() {
   const [maskOpen, setMaskOpen] = useState(false);
   const [maskDataUrl, setMaskDataUrl] = useState<string | null>(null);
 
+  // v4.33: 角色一致性 - 人脸参考图独立上传
+  const [faceUploadName, setFaceUploadName] = useState<string | null>(null);
+  const [faceUploadPreview, setFaceUploadPreview] = useState<string | null>(null);
+
   // v4.27: 折叠分组 + 错误定时消失
   const [paramOpen, setParamOpen] = useState(true);
   const [selectedOpen, setSelectedOpen] = useState(true);
@@ -124,6 +128,20 @@ export function ControlPanel() {
       setUploadName(name);
     } catch (e) {
       setError('上传失败：' + ((e as Error)?.message || String(e)));
+    }
+  };
+
+  // v4.33: 角色一致性 - 人脸参考图上传
+  const onPickFaceFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    try {
+      const dataUrl = await fileToBase64(file);
+      setFaceUploadPreview(dataUrl);
+      const name = await uploadImage(`face_${Date.now()}_${file.name}`, dataUrl);
+      setFaceUploadName(name);
+    } catch (e) {
+      setError('人脸图上传失败：' + ((e as Error)?.message || String(e)));
     }
   };
 
@@ -242,6 +260,10 @@ export function ControlPanel() {
       set('frames', 33);
       set('fps', 16);
     }
+    if (m === 'face_consistency') {
+      set('width', 1024);
+      set('height', 1024);
+    }
   };
 
   const run = async () => {
@@ -259,7 +281,7 @@ export function ControlPanel() {
       const seed = randomSeed ? Math.floor(Math.random() * 2_147_483_647) : p.seed;
       const intentPayload: Record<string, unknown> = {
         ...(it as unknown as Record<string, unknown>),
-        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid') ? p.mode : it.action,
+        action: (p.mode === 'outpaint' || p.mode === 'txt2vid' || p.mode === 'img2vid' || p.mode === 'face_consistency') ? p.mode : it.action,
         params: {
           ...(it.params || {}),
           ...(p.model ? { model: p.model } : {}),
@@ -301,6 +323,23 @@ export function ControlPanel() {
         maskImage = await uploadImage(`mask_${Date.now()}.png`, maskDataUrl);
       }
 
+      // v4.33: 角色一致性 - 人脸参考图
+      let faceImage: string | null = null;
+      if (p.mode === 'face_consistency') {
+        if (faceUploadName) {
+          faceImage = faceUploadName;
+        } else if (selectedNode) {
+          setPhase('准备人脸参考图…');
+          const b64 = await urlToBase64(imageUrl(selectedNode.filename));
+          faceImage = await uploadImage(`face_ref_${Date.now()}.png`, b64);
+        } else {
+          setError('角色一致性需要人脸参考图：请上传或选中画布节点');
+          setLoading(false);
+          setPhase('');
+          return;
+        }
+      }
+
       // 3.5) 生成前预览工作流（不提交 ComfyUI，前端面板实时显示）
       setPhase('预览工作流…');
       try {
@@ -317,6 +356,8 @@ export function ControlPanel() {
           grow_mask_by: p.growMaskBy,
           outpaint_direction: p.mode === 'outpaint' ? p.outpaintDir : undefined,
           outpaint_pixels: p.mode === 'outpaint' ? p.outpaintPixels : undefined,
+          face_image: faceImage,
+          face_weight: p.faceWeight,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -339,6 +380,8 @@ export function ControlPanel() {
         grow_mask_by: p.growMaskBy,
         outpaint_direction: p.mode === 'outpaint' ? p.outpaintDir : undefined,
         outpaint_pixels: p.mode === 'outpaint' ? p.outpaintPixels : undefined,
+        face_image: faceImage,
+        face_weight: p.faceWeight,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -410,7 +453,7 @@ export function ControlPanel() {
       const dw = DISPLAY_W;
       const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
       const parentId =
-        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid') && selectedNode && !uploadName ? selectedNode.id : null;
+        (p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'outpaint' || p.mode === 'img2vid' || p.mode === 'face_consistency') && selectedNode && !uploadName ? selectedNode.id : null;
 
       const isOutpaint = p.mode === 'outpaint' && selectedNode && !uploadName;
       if (isOutpaint && selectedNode) {
@@ -483,14 +526,17 @@ export function ControlPanel() {
         />
       </div>
 
-      {/* 模式：文生图 / 图生图 / 局部重绘 / 扩图 */}
+      {/* 模式：文生图 / 图生图 / 局部重绘 / 扩图（第1行）+ 视频 / 角色一致（第2行） */}
       <div style={{ display: 'flex', gap: 8 }}>
         <SegBtn small active={p.mode === 'txt2img'} onClick={() => set('mode', 'txt2img')} label="文生图" />
         <SegBtn small active={p.mode === 'img2img'} onClick={() => set('mode', 'img2img')} label="图生图" />
         <SegBtn small active={p.mode === 'inpaint'} onClick={() => set('mode', 'inpaint')} label="局部重绘" />
         <SegBtn small active={p.mode === 'outpaint'} onClick={() => set('mode', 'outpaint')} label="扩图" />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
         <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" />
         <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" />
+        <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
       </div>
 
       {/* 图生图 / 局部重绘 输入区 */}
@@ -581,6 +627,52 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* v4.33: 角色一致性（IPAdapterFaceID） */}
+      {p.mode === 'face_consistency' && (
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>角色一致性 · IPAdapterFaceID</div>
+          <div style={{ fontSize: 12, color: theme.text.soft, marginBottom: 10 }}>
+            上传一张人脸参考图，生成的新图片将保持该角色面部特征一致。支持上传或选中画布节点作为参考。
+          </div>
+
+          {/* 人脸参考图上传 */}
+          <div style={labelSm}>人脸参考图</div>
+          <label style={{ ...fileBtnStyle, marginTop: 6 }}>
+            上传人脸图
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => onPickFaceFile(e.target.files?.[0] || null)}
+            />
+          </label>
+
+          {(faceUploadPreview || selectedNode) && (
+            <div style={{ marginTop: 8, fontSize: 12, color: theme.text.soft }}>
+              {faceUploadName ? `已上传：${faceUploadName}` : selectedNode ? '将使用选中节点作为参考' : ''}
+            </div>
+          )}
+          {!faceUploadName && !selectedNode && (
+            <div style={{ marginTop: 8, fontSize: 12, color: theme.accent.amber }}>
+              请上传人脸参考图，或在画布中选中一个已生成节点
+            </div>
+          )}
+
+          {/* face_weight 滑块 */}
+          <div style={{ marginTop: 12 }}>
+            <SliderRow
+              label="面部保持强度 face_weight"
+              value={p.faceWeight}
+              min={0.1} max={1.5} step={0.05}
+              onChange={(v) => set('faceWeight', v)}
+              fmt={(v) => v.toFixed(2)} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 2 }}>
+            建议 0.6-0.9；越高面部越像参考图，越低越自由。
+          </div>
+        </div>
+      )}
+
       {/* 参数面板（可折叠） */}
       <div style={cardStyle}>
         <CollapseHeader
@@ -660,7 +752,7 @@ export function ControlPanel() {
       <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
         {loading
           ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : '生成 ▶'}
+          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : '生成 ▶'}
       </button>
 
       {/* v4.29: 实时进度条 */}

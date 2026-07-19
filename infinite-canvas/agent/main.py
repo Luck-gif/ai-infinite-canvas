@@ -101,6 +101,8 @@ class GenerateRequest(BaseModel):
     controlnets: list[dict[str, Any]] | None = None  # ControlNet 应用：[{model, type?, strength, image, preprocessor?}]（§6.23）
     frames: int = 33          # 视频帧数（Phase 9）
     fps: int = 16             # 视频帧率（Phase 9）
+    face_image: str | None = None   # 角色一致性：人脸参考图（已上传 ComfyUI input/ 的文件名，v4.33）
+    face_weight: float = 0.8        # 角色一致性：面部影响权重（v4.33）
     wait: bool = False  # 为 True 时同步轮询 /history 返回真实出图（端到端）
 
 
@@ -277,7 +279,8 @@ async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
             im.build_workflow, intent, req.input_image,
             req.batch_size, req.seed or None, req.mask_image,
             req.outpaint_direction, req.outpaint_pixels,
-            req.loras, req.controlnets, req.frames, req.fps)
+            req.loras, req.controlnets, req.frames, req.fps,
+            req.face_image, req.face_weight)
 
     # 兼容旧链路：用 checkpoint（缺省自动选共享库首个）
     template_id = "txt2img_sdxl"

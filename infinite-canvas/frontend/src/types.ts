@@ -106,7 +106,7 @@ export interface Link {
   label?: string;   // 可选关系标注（如「灵感来源」「同一系列」）
 }
 
-export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid';
+export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency';
 
 /** 节点模式可视化元信息（色标 + 中文名） */
 export const MODE_META: Record<GenMode, { label: string; color: string }> = {
@@ -116,6 +116,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   outpaint: { label: '扩图', color: '#f4a23b' },
   txt2vid: { label: '文生视频', color: '#a21caf' },
   img2vid: { label: '图生视频', color: '#db2777' },
+  face_consistency: { label: '角色一致', color: '#f97316' },
 };
 
 /** 生成参数（前端参数面板 → /api/generate） */
@@ -135,6 +136,8 @@ export interface GenParams {
   outpaintPixels: number; // 扩图扩展像素（原图像素空间）
   frames?: number;   // 视频帧数（Phase 9）
   fps?: number;      // 视频帧率（Phase 9）
+  faceWeight: number;    // 角色一致性：面部影响权重（v4.33）
+  faceImage: string | null;  // 角色一致性：人脸参考图上传名（v4.33）
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -153,6 +156,8 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   outpaintPixels: 256,
   frames: 33,
   fps: 16,
+  faceWeight: 0.8,
+  faceImage: null,
 };
 
 /** 模板注册表项（§6.7） */
