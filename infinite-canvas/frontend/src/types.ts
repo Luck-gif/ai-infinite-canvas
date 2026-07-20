@@ -82,7 +82,9 @@ export interface CanvasNode {
   mode?: GenMode;          // 生成方式（节点可视化色标）
   parentId?: string | null; // 派生来源（图生图/局部重绘的源节点）→ 血缘连线
   seed?: number;            // 随机种子（溯源）
-  negative?: string;        // 负向提示词
+  negative?: string;        // 负向提示词（v4.22）
+  steps?: number;           // 采样步数（v4.54）
+  cfg?: number;             // CFG scale（v4.54）
   createdAt?: number;       // 创建时间戳
   // ── 控制节点（§6.22：LoRA / ControlNet 节点化）──
   kind?: 'image' | 'control' | 'video';   // 节点种类：图片节点 | 控制节点 | 视频节点
