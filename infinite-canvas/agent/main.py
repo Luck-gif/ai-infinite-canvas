@@ -483,15 +483,18 @@ async def generate_workflow(req: WorkflowGenerateRequest) -> dict:
 
     workflow_nodes = result["workflow"]
 
-    # Phase 4: 校验
-    validation = await asyncio.to_thread(cc.validate_workflow, workflow_nodes)
+    # 将 list→dict（comfy_client 期望 {node_id: {...}} 格式）
+    nodes_dict = {str(n["id"]): {"class_type": n["class_type"], "inputs": n.get("inputs", {})} for n in workflow_nodes}
+
+    # Phase 4: 校验（返回值是 tuple: (valid: bool, issues: list[str])）
+    valid_flag, issues = await asyncio.to_thread(cc.validate_workflow, nodes_dict)
 
     # 生成工作流图（前端可视化）
-    graph = cc.workflow_to_graph(workflow_nodes)
+    graph = cc.workflow_to_graph(nodes_dict)
 
     response_data: dict[str, Any] = {
-        "validated": validation.get("valid", True),
-        "issues": validation.get("issues", []),
+        "validated": valid_flag,
+        "issues": issues,
         "node_count": len(workflow_nodes),
         "shot_id": result["shot_id"],
         "prompt_engineered": result["prompt"],
@@ -505,8 +508,7 @@ async def generate_workflow(req: WorkflowGenerateRequest) -> dict:
     # Phase 5: 可选提交执行
     if req.submit:
         try:
-            prompt_json = wa.workflow_to_prompt_json(workflow_nodes)
-            prompt_id = cc.submit_prompt(prompt_json)
+            prompt_id = cc.submit_workflow(nodes_dict)
             response_data["prompt_id"] = prompt_id
             response_data["submitted"] = True
         except Exception as e:
