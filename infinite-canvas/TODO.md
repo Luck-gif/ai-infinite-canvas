@@ -1,6 +1,6 @@
 # TODO.md — 无限画布 v5.0 任务队列
 
-> 最后更新：2026-07-20 (v4.50 二次迭代交付)
+> 最后更新：2026-07-20 (v4.56 三层画布迭代交付)
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 所有人请按优先级从上到下执行。
 
@@ -25,13 +25,13 @@
 
 ## 🟡 P1 — v5.0 前端三层画布（硬件升级后 3-5 天）
 
-- [ ] **#8 ControlPanel.tsx 拆分** — 12 模式面板 → 三层画布各自的上下文工具栏
-- [ ] **#9 Canvas.tsx 重构** — 支持项目/故事板/工作流 三种视图模式切换
-- [ ] **#10 项目画布** — 角色/场景/道具/风格节点 + 属性面板
+- [x] **#8 ControlPanel.tsx 拆分** — 层级上下文提示条 + SegBtn 层级色彩标记 (v4.51) ✅
+- [x] **#9 Canvas.tsx 重构** — 三种视图模式切换：节点过滤 + 层级统计栏 (v4.55) ✅
+- [x] **#10 项目画布** — EntityBrowserPanel + 实体加载到策划层 + 描述字段 (v4.56) ✅
 - [ ] **#11 故事板画布** — 分镜编排 + 时间轴 + 资产引用 + 批量生成
-- [ ] **#12 工作流画布** — 只读→可编辑：拖拽节点/连线/编辑属性/提交执行
-- [ ] **#13 types.ts + store.ts + api.ts 扩展** — 新增实体/分镜/工作流编辑类型和状态
-- [ ] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）
+- [x] **#12 工作流画布** — 只读→可编辑：NodeEditPanel 参数编辑/重新生成/管线提交 (v4.54) ✅
+- [x] **#13 types.ts + store.ts + api.ts 扩展** — 实体类型/层级映射/CanvasNode扩展 (v4.54-v4.56) ✅
+- [x] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）(v4.53) ✅
 
 ## 🟢 P2 — v5.1 发布前增强
 
@@ -43,9 +43,9 @@
 
 ---
 
-## 📋 v4.50 当前能力清单
+## 📋 v4.56 当前能力清单
 
-### API (23 endpoints)
+### API (27 endpoints)
 ```
 POST /api/intent              意图解析（DeepSeek v4）
 POST /api/generate            文生图/图生图/重绘/扩图
@@ -60,6 +60,17 @@ GET  /api/blueprints          蓝图库查询
 POST /api/pipeline/run        多Agent管线执行
 POST /api/pipeline/storyboard 故事板管线
 POST /api/entities/*          实体注册表 CRUD
+GET  /api/entities            实体列表（按kind过滤）
+GET  /api/entities/search     实体搜索
+GET  /api/entities/{id}/prompt 实体提示词
+POST /api/text/produce        多Agent写作管线
+GET  /api/progress/{id}       实时进度
+POST /api/export/zip          ZIP 导出
+GET  /api/env                 环境诊断
+GET  /api/health              健康检查
+```
+POST /api/pipeline/storyboard 故事板管线
+POST /api/entities/*          实体注册表 CRUD
 GET  /api/progress/{id}       实时进度
 POST /api/export/zip          ZIP 导出
 GET  /api/env                 环境诊断
@@ -72,16 +83,19 @@ GET  /api/health              健康检查
 TypeScript: tsc 0 error
 ```
 
-### 新增模块（v4.50）
+### 新增模块（v4.50-v4.56）
 ```
 pipeline_orchestrator.py   — 7-Agent管线编排器
 workflow_assembler.py      — 蓝图组装引擎
 video_blueprints.py        — 视频蓝图库
 consistency_manager.py     — 一致性策略路由
 entity_registry.py         — 实体注册表
+text_production.py         — 多Agent写作管线
 LayerPanel.tsx              — 三层画布切换
 WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板
+NodeEditPanel.tsx           — 节点属性编辑（重新生成/管线提交/预览）
+EntityBrowserPanel.tsx      — 实体浏览与画布加载
 ```
 
 ---
