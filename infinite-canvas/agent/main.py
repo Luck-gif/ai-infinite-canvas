@@ -167,10 +167,26 @@ class NarrateResponse(BaseModel):
     narrative_raw: dict  # 原始 LLM 返回值
 
 
+# ── v5.6 质量增强 ──────────────────────────────────────────────
+# 通用负面提示词（抑制低质、扭曲、水印等文生图常见问题）
+DEFAULT_NEGATIVE_PROMPT = (
+    "low quality, worst quality, blurry, distorted, deformed, bad anatomy, "
+    "bad proportions, extra limbs, cloned face, disfigured, gross proportions, "
+    "malformed limbs, missing arms, missing legs, extra arms, extra legs, "
+    "fused fingers, too many fingers, long neck, ugly, jpeg artifacts, "
+    "text, watermark, signature, username, cropped, out of frame, "
+    "poorly drawn face, poorly drawn hands, mutation, mutilated, extra digit, "
+    "fewer digits, bad hands, error, sketch, nsfw"
+)
+
+# 文生图质量前缀（增强 prompt 质量和一致性）
+QUALITY_PREFIX = "masterpiece, best quality, highly detailed, sharp focus, professional"
+
 # ── v4.38 分镜编排 ─────────────────────────────────────────────
 class StoryboardRequest(BaseModel):
     prompts: list[str] = Field(..., min_length=1, max_length=25,
                                 description="分镜提示词列表，每项为一个镜头描述")
+    negative: str = ""
     checkpoint: str | None = None
     width: int = 1024
     height: int = 1024
@@ -1244,14 +1260,23 @@ async def storyboard(req: StoryboardRequest) -> StoryboardResponse:
             return StoryboardResponse(validated=False, issues=["共享库无可用模型"])
         checkpoint = checkpoints[0]
 
+    # 应用质量增强：前缀 + 默认负面提示词
+    negative = req.negative.strip() if req.negative else DEFAULT_NEGATIVE_PROMPT
+
+    def _enhance(p: str) -> str:
+        p = p.strip()
+        if not any(p.lower().startswith(q.split(",")[0].strip().lower()) for q in [QUALITY_PREFIX]):
+            p = f"{QUALITY_PREFIX}, {p}"
+        return p
+
     # 1) 为每个分镜构建 txt2img 工作流（seed 逐帧递增）
     workflows: list[dict[str, Any]] = []
     for i, prompt in enumerate(prompts):
         frame_seed = max(req.seed + i, 0)
         wf = cc.build_txt2img(
             checkpoint=checkpoint,
-            prompt=prompt,
-            negative="",
+            prompt=_enhance(prompt),
+            negative=negative,
             width=req.width, height=req.height,
             steps=req.steps, cfg=req.cfg,
             seed=frame_seed, batch_size=1,

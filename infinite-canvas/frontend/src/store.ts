@@ -526,11 +526,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       const START_X = 100;
       const START_Y = 80;
 
-      const newNodes: CanvasNode[] = shots.map((shot, i) => ({
+      const newNodes: CanvasNode[] = shots.map((shot: any, i) => ({
         id: `sb-${shot.shot_id}`,
         filename: '',
         prompt: shot.prompt,
+        description: shot.description || '',
+        negative: shot.negative || '',
         templateId: 'storyboard',
+        shotId: shot.shot_id,
+        shotIndex: shot.shot_index ?? i,
+        shotStatus: 'pending' as any,
         x: START_X + (i % COLS) * GAP_X,
         y: START_Y + Math.floor(i / COLS) * GAP_Y,
         width: 320,

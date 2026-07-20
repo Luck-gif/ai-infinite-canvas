@@ -329,6 +329,7 @@ export interface StoryboardResponse {
 /** /api/storyboard 请求 */
 export interface StoryboardArgs {
   prompts: string[];
+  negative?: string;
   checkpoint?: string | null;
   width?: number;
   height?: number;

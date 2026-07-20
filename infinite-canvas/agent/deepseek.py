@@ -362,17 +362,28 @@ def _postprocess(intent: dict[str, Any], user_input: str = "") -> dict[str, Any]
 # ═══════════════════════════════════════════════════════════════
 
 _NARRATIVE_SYSTEM = (
-    "你是一个专业的漫画/动画分镜分析师。用户会提供一段故事叙述文字，你需要从中提取：\n"
+    "你是一个专业的漫画/动画分镜分析师，也是文生图 prompt 工程师。"
+    "用户会提供一段故事叙述文字，你需要从中提取：\n"
     "1) 所有角色（名字、外观描述、性格特征、角色定位）\n"
     "2) 所有场景（名称、环境描述、氛围）\n"
-    "3) 推荐的分镜列表（每个分镜包含：镜头描述、所属角色、场景、英文文生图 prompt）\n\n"
-    "规则：\n"
+    "3) 推荐的分镜列表（含中文描述 + 高质量英文文生图 prompt）\n\n"
+    "角色规则：\n"
     "- characters: 提取所有具名角色，description 用中文描述外观，traits 描述性格\n"
+    "- 角色外观描述应包含：发型、发色、瞳色、服装、体型、年龄、标志性特征\n\n"
+    "场景规则：\n"
     "- scenes: 提取所有场景/地点，mood 描述氛围（如 '温馨'/'紧张'/'浪漫'）\n"
-    "- shots: 将故事拆分为 4~12 个关键镜头，每个镜头提供英文 ComfyUI txt2img prompt（50~150词）\n"
-    "- 分镜 prompt 要求：详细描述画面内容、光照、构图、风格，适合英文 T5 编码器\n"
-    "- genre: 故事类型（玄幻/都市/古风/科幻/悬疑/爱情/武侠/校园）\n"
-    "- style_suggestion: 推荐的画风（水墨/manga/动漫/anime/写实/厚涂）\n"
+    "- 场景描述应包含：环境、光线、色调、季节、天气\n\n"
+    "分镜 prompt 规则（严格遵循）：\n"
+    "- shots: 将故事拆分为 4~12 个关键镜头\n"
+    "- description 字段用中文简述镜头内容\n"
+    "- prompt 字段必须是高质量英文文生图提示词（80~150 词）\n"
+    "- prompt 结构：主体描述 + 动作表情 + 场景环境 + 光线氛围 + 构图视角 + 画风\n"
+    "- 每句 prompt 必须包含：构图指示词（close-up/medium shot/wide shot/cinematic/dynamic angle）\n"
+    "- 每句 prompt 必须包含：光线描述（soft lighting/golden hour/dramatic rim light/volumetric light 等）\n"
+    "- 每句 prompt 必须包含：风格标签（anime style/ink painting/digital art/cinematic 等）\n"
+    "- 每句 prompt 必须以画风标签结尾（如 'anime style, high quality'）\n"
+    "- genre: 故事类型\n"
+    "- style_suggestion: 推荐的画风\n"
     "输出纯 JSON，不要包含 ```json 标记或额外解释。"
 )
 
@@ -391,29 +402,29 @@ _NARRATIVE_FEWSHOT: list[dict[str, str]] = [
             {"name": "雪璃", "description": "白狐化形的少女，银发蓝瞳，身披白色斗篷，手臂有伤", "traits": "高贵冷傲、内心温柔", "role": "主角"},
         ],
         "scenes": [
-            {"name": "青云山", "description": "云雾缭绕的仙山，古木参天，山间有溪流", "mood": "空灵神秘"},
+            {"name": "青云山", "description": "云雾缭绕的仙山，古木参天，山间有溪流，清晨", "mood": "空灵神秘"},
             {"name": "林间小屋", "description": "简朴的木屋，内有火炉，雨夜烛光摇曳", "mood": "温馨"},
-            {"name": "月下崖台", "description": "山顶平坦石台，俯瞰云海，月光如水", "mood": "浪漫庄严"},
+            {"name": "月下崖台", "description": "山顶平坦石台，俯瞰云海，满月之夜月光如水", "mood": "浪漫庄严"},
         ],
         "shots": [
             {"shot_id": "1", "character": "林风", "scene": "青云山", "action": "txt2img",
              "description": "林风在青云山修炼，盘坐山巅",
-             "prompt": "a young cultivator in green robe meditating on a misty mountain peak, ancient pine trees, ethereal clouds, Chinese ink wash painting style, cinematic wide shot, soft natural light"},
+             "prompt": "a young cultivator in flowing green robes meditating on a misty mountain peak, ancient twisted pine trees, ethereal clouds floating below, golden morning light, volumetric sun rays through fog, traditional Chinese ink wash painting style, cinematic wide landscape shot, soft atmospheric lighting"},
             {"shot_id": "2", "character": "林风, 雪璃", "scene": "青云山", "action": "txt2img",
              "description": "林风发现受伤的白狐少女",
-             "prompt": "a young man discovering an injured silver-haired girl with fox ears lying under an ancient tree, white cloak, blood on her arm, concerned expression, dappled forest light"},
+             "prompt": "medium shot, a young swordsman discovering an injured silver-haired fox girl with white ears lying under an ancient gnarled tree, white cloak torn with blood stains on her arm, the boy's concerned expression, dappled forest light filtering through leaves, shallow depth of field, Chinese xianxia fantasy, anime style"},
             {"shot_id": "3", "character": "林风, 雪璃", "scene": "林间小屋", "action": "txt2img",
              "description": "林风在木屋中为雪璃包扎伤口",
-             "prompt": "inside a cozy wooden cabin, a young man gently bandaging the arm of a silver-haired fox girl by candlelight, rain outside the window, warm amber lighting, intimate atmosphere, anime style"},
+             "prompt": "intimate interior scene inside a cozy wooden cabin, a gentle young man carefully bandaging the arm of a silver-haired fox spirit girl seated by a stone hearth, warm amber firelight casting long shadows, rain streaking down the window outside, soft chiaroscuro lighting, emotional atmosphere, anime style"},
             {"shot_id": "4", "character": "雪璃", "scene": "林间小屋", "action": "txt2img",
              "description": "雪璃向林风透露自己的真实身份",
-             "prompt": "close up portrait of a beautiful silver-haired fox spirit girl, revealing expression, teary blue eyes, candlelight reflecting in her eyes, dramatic chiaroscuro lighting, emotional anime style"},
+             "prompt": "close up portrait of a beautiful silver-haired fox spirit girl with shimmering blue eyes, revealing vulnerable expression, tears glistening, candlelight reflecting in her eyes, dramatic rim light on the edges of her hair, velvet darkness in background, emotional key light, highly detailed eyes, anime portrait style"},
             {"shot_id": "5", "character": "林风", "scene": "林间小屋", "action": "txt2img",
              "description": "林风坚定地表示要保护雪璃",
-             "prompt": "a determined young cultivator clenching his fist, resolute expression, warm firelight, dramatic low-angle shot, ink wash painting style"},
+             "prompt": "dynamic low angle shot of a determined young cultivator clenching his fist, resolute fiery eyes, green robes billowing, warm firelight illuminating his face from below, dramatic shadows, intense emotional moment, cinematic composition, ink wash painting style"},
             {"shot_id": "6", "character": "林风, 雪璃", "scene": "月下崖台", "action": "txt2img",
              "description": "月下两人立下守护誓约",
-             "prompt": "a young man and a silver-haired fox girl standing together on a cliff edge under the full moon, sea of clouds below, oath-taking pose, ethereal moonlight, romantic fantasy atmosphere, cinematic wide shot, anime style"},
+             "prompt": "cinematic wide shot of a young man and a silver-haired fox girl standing together on a cliff edge under the radiant full moon, sea of silvery clouds stretching to the horizon, their hands clasped in solemn oath, ethereal moonlight creating silhouettes, floating fireflies around them, romantic fantasy atmosphere, breathtaking scale, anime style"},
         ],
     }, ensure_ascii=False)},
 ]

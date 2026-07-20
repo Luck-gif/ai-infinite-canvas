@@ -18,6 +18,16 @@ const STEPS: { id: WizardStep; label: string; icon: string }[] = [
   { id: 'generate', label: '开始生成', icon: '✨' },
 ];
 
+// 自动化负面提示词（抑制低质、扭曲、水印等文生图常见问题）
+const NEGATIVE_PRESET =
+  'low quality, worst quality, blurry, distorted, deformed, bad anatomy, ' +
+  'bad proportions, extra limbs, cloned face, disfigured, gross proportions, ' +
+  'malformed limbs, missing arms, missing legs, extra arms, extra legs, ' +
+  'fused fingers, too many fingers, long neck, ugly, jpeg artifacts, ' +
+  'text, watermark, signature, username, cropped, out of frame, ' +
+  'poorly drawn face, poorly drawn hands, mutation, mutilated, bad hands, ' +
+  'error, sketch, nsfw';
+
 export function StoryboardWizard({ onClose }: Props) {
   // ── 状态 ──
   const [step, setStep] = useState<WizardStep>('script');
@@ -35,6 +45,7 @@ export function StoryboardWizard({ onClose }: Props) {
   // 生成参数
   const [numShots, setNumShots] = useState(0);
   const [genParams, setGenParams] = useState({ width: 1024, height: 1024, steps: 20, style: 'anime' });
+  const [negativePreset, setNegativePreset] = useState(NEGATIVE_PRESET);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   // Store
@@ -96,43 +107,48 @@ export function StoryboardWizard({ onClose }: Props) {
     setProgress({ current: 0, total: shots.length });
 
     try {
-      // 1. 用叙事提取的原始单条 English prompts 创建画布节点
-      //    （不用 plan 返回的模板填充结果，避免所有分镜共用拼接描述）
+      // 1. 用叙事提取的原始 prompts + 中文描述创建画布节点
       const canvasShots = shots.map((s, i) => ({
         shot_id: s.shot_id,
         shot_index: i,
         prompt: s.prompt,
+        description: s.description || '',
+        negative: negativePreset,
         node_count: 0,
       }));
       loadStoryboardToCanvas(canvasShots);
 
-      // 2. 提交到 ComfyUI 实际生成图片（/api/storyboard 会构建 txt2img 工作流并等待结果）
+      // 2. 提交到 ComfyUI 实际生成（自动负面提示词后端补齐）
       const result = await generateStoryboard({
         prompts: shots.map((s) => s.prompt),
+        negative: negativePreset,
         width: genParams.width,
         height: genParams.height,
         steps: genParams.steps,
       });
 
-      // 3. 把生成的图片文件名写回画布节点
+      // 3. 把生成的图片文件名 + 状态写回画布节点
       if (result.frames) {
         result.frames.forEach((frame) => {
           const shot = canvasShots[frame.index];
           if (shot && frame.image) {
             updateNode(`sb-${shot.shot_id}`, { filename: frame.image, shotStatus: 'done' });
+          } else if (shot) {
+            updateNode(`sb-${shot.shot_id}`, { shotStatus: 'error' });
           }
         });
       }
 
       const generated = result.frames ? result.frames.length : 0;
+      const successCount = result.frames ? result.frames.filter((f) => f.image).length : 0;
       setProgress({ current: generated, total: shots.length });
-      toastChannel.push('success', `已生成 ${generated}/${shots.length} 个分镜到画布`);
+      toastChannel.push('success', `已生成 ${successCount}/${shots.length} 个分镜到画布`);
     } catch (e: any) {
       toastChannel.push('error', `生成失败: ${e?.message || '未知错误'}`);
     } finally {
       setBusy(false);
     }
-  }, [shots, genParams, loadStoryboardToCanvas, updateNode]);
+  }, [shots, genParams, negativePreset, loadStoryboardToCanvas, updateNode]);
 
   // ── 拖拽 ──
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -400,7 +416,7 @@ export function StoryboardWizard({ onClose }: Props) {
 
             {/* 生成参数 */}
             <div style={{
-              display: 'flex', gap: 10, marginBottom: 14, padding: 10,
+              display: 'flex', gap: 10, marginBottom: 8, padding: 10,
               borderRadius: 8, background: theme.bg.card, border: `1px solid ${theme.border.default}`,
               flexWrap: 'wrap',
             }}>
@@ -417,6 +433,22 @@ export function StoryboardWizard({ onClose }: Props) {
                 <option value="ink_wash">水墨风格</option>
                 <option value="manga">漫画风格</option>
               </select>
+            </div>
+
+            {/* 负面提示词（自动化预设，可编辑） */}
+            <div style={{
+              marginBottom: 12, padding: 8, borderRadius: 6,
+              background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: theme.accent.red, marginBottom: 4 }}>
+                ⚠️ 负面提示词（自动排除低质、变形、水印等问题）
+              </div>
+              <textarea
+                value={negativePreset}
+                onChange={(e) => setNegativePreset(e.target.value)}
+                rows={2}
+                style={{ ...fullInputStyle, resize: 'vertical', fontSize: 10, color: theme.text.muted }}
+              />
             </div>
 
             {/* 分镜列表 */}
