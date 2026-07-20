@@ -264,6 +264,129 @@ async def regional_generate(req: RegionalRequest) -> RegionalResponse:
     )
 
 
+# ── v5.2 一致性审查 + IP 相似度预警 ──────────────────────────────
+
+class ConsistencyReviewRequest(BaseModel):
+    nodes: list[dict[str, Any]] = Field(..., min_length=1, max_length=50,
+        description="节点列表：[{node_id, reference_image, generated_image, mode}, ...]")
+    threshold: float = 0.75
+
+
+class ConsistencyReviewResponse(BaseModel):
+    validated: bool
+    total_nodes: int = 0
+    passed_nodes: int = 0
+    failed_nodes: int = 0
+    pass_rate: float = 0.0
+    avg_similarity: float = 0.0
+    grade_distribution: dict[str, int] = {}
+    issues: list[str] = []
+    reports: list[dict[str, Any]] = []
+
+
+@app.post("/api/review/consistency")
+async def review_consistency(req: ConsistencyReviewRequest) -> ConsistencyReviewResponse:
+    """跨节点一致性自动审查（v5.2 #17）。
+
+    使用 CLIP embedding 对比参考图和生成图的相似度，
+    按模型（face/style/scene）分类评分。
+
+    阈值：≥ 0.75 通过，< 0.75 标记为降级。
+    """
+    from embedding_service import cross_node_consistency, batch_consistency_summary
+    reports = cross_node_consistency(req.nodes, threshold=req.threshold)
+    summary = batch_consistency_summary(reports)
+    return ConsistencyReviewResponse(
+        validated=True,
+        total_nodes=summary["total_nodes"],
+        passed_nodes=summary["passed_nodes"],
+        failed_nodes=summary["failed_nodes"],
+        pass_rate=summary["pass_rate"],
+        avg_similarity=summary["avg_similarity"],
+        grade_distribution=summary["grade_distribution"],
+        issues=summary["issues"],
+        reports=[
+            {
+                "node_id": r.node_id,
+                "mode": r.mode,
+                "similarity_score": r.similarity_score,
+                "grade": r.grade,
+                "passed": r.passed,
+                "issues": r.issues,
+            }
+            for r in reports
+        ],
+    )
+
+
+class IPCheckRequest(BaseModel):
+    entity_id: str
+    generated_image: str
+    entity_name: str = ""
+
+
+class IPCheckResponse(BaseModel):
+    validated: bool
+    entity_id: str
+    entity_name: str
+    similarity: float
+    passed: bool
+    warning: str
+    action: str
+
+
+@app.post("/api/guard/ip-check")
+async def ip_check(req: IPCheckRequest) -> IPCheckResponse:
+    """IP 角色相似度预警（v5.2 #18）。
+
+    对比生成图与角色 IP 参考库的 CLIP 嵌入相似度。
+    相似度 < 0.65 时给出预警。
+    """
+    from embedding_service import check_ip_similarity
+    result = check_ip_similarity(req.entity_id, req.generated_image, req.entity_name)
+    return IPCheckResponse(
+        validated=True,
+        entity_id=result.entity_id,
+        entity_name=result.entity_name,
+        similarity=result.generated_similarity,
+        passed=result.passed,
+        warning=result.warning,
+        action=result.suggested_action,
+    )
+
+
+class IPRegisterRequest(BaseModel):
+    entity_id: str
+    reference_image: str  # 参考图本地路径
+
+
+class IPRegisterResponse(BaseModel):
+    validated: bool
+    entity_id: str
+    registered: bool
+    message: str
+
+
+@app.post("/api/guard/ip-register")
+async def ip_register(req: IPRegisterRequest) -> IPRegisterResponse:
+    """注册实体参考嵌入到 IP 库（v5.2 #18）。"""
+    from embedding_service import store_entity_embedding
+    ok = store_entity_embedding(req.entity_id, req.reference_image)
+    return IPRegisterResponse(
+        validated=True,
+        entity_id=req.entity_id,
+        registered=ok,
+        message="注册成功" if ok else f"注册失败：无法提取 {req.reference_image} 的 CLIP 嵌入",
+    )
+
+
+@app.get("/api/guard/ip-library")
+async def ip_library() -> dict:
+    """IP 嵌入库状态查询（v5.2 #18）。"""
+    from embedding_service import ip_library_status
+    return ip_library_status()
+
+
 # ── v4.39 视频拼接 ─────────────────────────────────────────────
 _COMFYUI_OUTPUT_DIR = os.environ.get(
     "COMFYUI_OUTPUT_DIR",

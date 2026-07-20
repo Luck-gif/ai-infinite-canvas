@@ -44,8 +44,16 @@
   - `intent_map.py` regional action + _build_regional 路径
   - 前端 GenMode 新增 'regional' + RegionalCharacterSlot 接口
   - 19 个新 pytest
-- [ ] **#17 一致性自动审查** — CLIP embedding 跨节点对比
-- [ ] **#18 IP 相似度预警** — 角色嵌入库+阈值检测
+- [x] **#17 一致性自动审查** — CLIP embedding 跨节点对比 ✅ 2026-07-20
+  - `embedding_service.py` — CLIP ViT-L/14 嵌入提取 + 余弦相似度
+  - `cross_node_consistency()` + `batch_consistency_summary()` + grade(A/B/C/D)
+  - `/api/review/consistency` 端点：批量节点相似度审查
+  - 阈值 0.75 通过，按 face/style/scene 分类统计
+- [x] **#18 IP 相似度预警** — 角色嵌入库+阈值检测 ✅ 2026-07-20
+  - `store_entity_embedding()` / `get_entity_embedding()` 嵌入索引持久化
+  - `check_ip_similarity()` 三级预警（通过/轻度偏离/严重偏离）
+  - `/api/guard/ip-check` + `/api/guard/ip-register` + `/api/guard/ip-library` 端点
+  - 21 个新 pytest（含嵌入提取/一致性审查/IP预警）
 - [ ] **#19 基础审核** — 节点质量标记 + 批量浏览模式
 
 ---
@@ -79,14 +87,14 @@ GET  /api/health              健康检查
 
 ### 测试
 ```
-237 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v + 19 regional) — 全绿
+258 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v + 19 regional + 21 embedding) — 全绿
 TypeScript: tsc 0 error
 ```
 
 ### 进度
 ```
-P0: 6/6 ✅  P1: 7/7 ✅  P2: 2/5
-总版本: v5.1
+P0: 6/6 ✅  P1: 7/7 ✅  P2: 4/5
+总版本: v5.2
 ```
 
 ### 新增模块（v4.50-v5.1）
@@ -100,6 +108,7 @@ text_production.py         — 多Agent写作管线
 lightx2v_blueprints.py     — LightX2V 4步/2步蒸馏蓝图 (v5.0)
 sage_attention.py          — SageAttention 量化加速配置 (v5.0)
 regional_pipeline.py       — 多角色同框 Regional Sampler (v5.1)
+embedding_service.py        — CLIP 嵌入服务 + 一致性审查 + IP 预警 (v5.2)
 LayerPanel.tsx              — 三层画布切换
 WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板

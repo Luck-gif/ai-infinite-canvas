@@ -132,6 +132,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   prop_consistency: { label: '道具一致', color: '#7c3aed' },
   storyboard: { label: '分镜编排', color: '#f59e0b' },
   regional: { label: '多角色同框', color: '#06b6d4' },  // v5.1
+};
 
 /** 生成参数（前端参数面板 → /api/generate） */
 export interface GenParams {

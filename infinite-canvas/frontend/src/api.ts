@@ -397,3 +397,82 @@ export async function regionalGenerate(req: RegionalGenerateRequest): Promise<Re
   }
   return res.json() as Promise<RegionalGenerateResponse>;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// v5.2 一致性审查 + IP 相似度预警
+// ═══════════════════════════════════════════════════════════════
+
+export interface ConsistencyReviewNode {
+  node_id: string;
+  reference_image: string;
+  generated_image: string;
+  mode: string;
+}
+
+export interface ConsistencyReviewResponse {
+  validated: boolean;
+  total_nodes: number;
+  passed_nodes: number;
+  failed_nodes: number;
+  pass_rate: number;
+  avg_similarity: number;
+  grade_distribution: Record<string, number>;
+  issues: string[];
+  reports: Array<{
+    node_id: string;
+    mode: string;
+    similarity_score: number;
+    grade: string;
+    passed: boolean;
+    issues: string[];
+  }>;
+}
+
+export async function reviewConsistency(
+  nodes: ConsistencyReviewNode[],
+  threshold?: number,
+): Promise<ConsistencyReviewResponse> {
+  const res = await fetch(`${BASE}/api/review/consistency`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodes, threshold: threshold ?? 0.75 }),
+  });
+  if (!res.ok) throw new Error(`consistency review failed: ${res.status}`);
+  return res.json() as Promise<ConsistencyReviewResponse>;
+}
+
+export interface IPCheckResponse {
+  validated: boolean;
+  entity_id: string;
+  entity_name: string;
+  similarity: number;
+  passed: boolean;
+  warning: string;
+  action: string;
+}
+
+export async function ipCheck(entityId: string, generatedImage: string, entityName?: string): Promise<IPCheckResponse> {
+  const res = await fetch(`${BASE}/api/guard/ip-check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entity_id: entityId, generated_image: generatedImage, entity_name: entityName ?? '' }),
+  });
+  if (!res.ok) throw new Error(`ip check failed: ${res.status}`);
+  return res.json() as Promise<IPCheckResponse>;
+}
+
+export async function ipRegister(entityId: string, referenceImage: string): Promise<{ validated: boolean; entity_id: string; registered: boolean; message: string }> {
+  const res = await fetch(`${BASE}/api/guard/ip-register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entity_id: entityId, reference_image: referenceImage }),
+  });
+  if (!res.ok) throw new Error(`ip register failed: ${res.status}`);
+  return res.json() as Promise<{ validated: boolean; entity_id: string; registered: boolean; message: string }>;
+}
+
+export async function ipLibraryStatus(): Promise<{ total_entities: number; embedding_dim: number; entity_ids: string[]; index_file: string }> {
+  const res = await fetch(`${BASE}/api/guard/ip-library`);
+  if (!res.ok) throw new Error(`ip library status failed: ${res.status}`);
+  return res.json() as Promise<{ total_entities: number; embedding_dim: number; entity_ids: string[]; index_file: string }>;
+}
