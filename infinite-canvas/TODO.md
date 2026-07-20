@@ -1,12 +1,12 @@
-# TODO.md — 无限画布 v5.2 任务队列
+# TODO.md — 无限画布 v5.3 终态
 
-> 最后更新：2026-07-20 (v5.0 LightX2V 视频加速完成)
+> 最后更新：2026-07-20 (v5.3 全部完成)
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
-> 所有人请按优先级从上到下执行。
+> 🎉 P0/P1/P2 全部交付，258 pytest + 40 vitest 全绿，tsc 0 error
 
 ---
 
-## ✅ P0 — v4.50 后端增强（48h 内，硬件升级前）
+## ✅ P0 — v4.50 后端增强（已完成）
 
 - [x] **#1 创建 `entity_registry.py`** — 角色/场景/道具/风格结构化注册表（JSON Schema）✅ 2026-07-20
 - [x] **#2 新增 `/api/entities/*` CRUD** — 创建/读取/更新/删除实体 ✅ 2026-07-20
@@ -33,7 +33,7 @@
 - [x] **#13 types.ts + store.ts + api.ts 扩展** — 实体类型/层级映射/CanvasNode扩展 (v4.54-v4.56) ✅
 - [x] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）(v4.53) ✅
 
-## 🟢 P2 — v5.1 发布前增强（进行中）
+## ✅ P2 — v5.3 发布前增强（全部完成！）
 
 - [x] **#15 LightX2V + SageAttention** 视频加速管线 ✅ 2026-07-20
 - [x] **#16 多角色同框** Regional Pipeline ✅ 2026-07-20
