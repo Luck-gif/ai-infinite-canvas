@@ -276,6 +276,41 @@ export function App() {
 
           <div style={{ width: 1, height: 18, background: theme.border.default, margin: '0 4px' }} />
 
+          <div style={{ width: 1, height: 18, background: theme.border.default, margin: '0 4px' }} />
+
+          {/* v5.1 工作流执行 */}
+          <ToolBtn
+            onClick={async () => {
+              const s = useCanvasStore.getState();
+              if (s.portEdges.length === 0) {
+                toastChannel.push('info', '没有端口连线，请先在画布上连接节点的端口');
+                return;
+              }
+              try {
+                const res = await fetch('/api/workflow/execute-chain', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    nodes: s.nodes.filter(n => n.filename),
+                    port_edges: s.portEdges,
+                  }),
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                  toastChannel.push('success', `工作流执行完成: ${data.results?.length ?? 0} 个节点`);
+                } else {
+                  toastChannel.push('error', `执行失败: ${data.error || '未知错误'}`);
+                }
+              } catch (e) {
+                toastChannel.push('error', `执行失败: ${(e as Error).message}`);
+              }
+            }}
+            label="▶ 执行"
+            title="执行端口连线工作流"
+          />
+
+          <div style={{ width: 1, height: 18, background: theme.border.default, margin: '0 4px' }} />
+
           {/* 编辑操作 */}
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />

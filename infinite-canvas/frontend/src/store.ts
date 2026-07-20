@@ -1,6 +1,7 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
 import type { CanvasNode, Link, PortEdge, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus, NodeQualityStatus } from './types';
+import { defaultPortsForKind } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
@@ -243,7 +244,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       // v5.0: 自动初始化 ports
       if (!n.ports && n.kind) {
         try {
-          const { defaultPortsForKind } = require('./types');
           n.ports = defaultPortsForKind(n.kind);
         } catch { /* types.ts 稍后更新 */ }
       }
@@ -389,27 +389,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     },
 
     undo: () => {
-      const { past, nodes, links, future } = get();
+      const { past, nodes, links, portEdges, future } = get();
       if (past.length === 0) return;
       const prev = past[past.length - 1];
       set({
         nodes: prev.nodes,
         links: prev.links,
+        portEdges: prev.portEdges ?? [],
         past: past.slice(0, -1),
-        future: [{ nodes, links }, ...future],
+        future: [{ nodes, links, portEdges }, ...future],
         selectedId: null,
       });
       persist(get());
     },
 
     redo: () => {
-      const { past, nodes, links, future } = get();
+      const { past, nodes, links, portEdges, future } = get();
       if (future.length === 0) return;
       const next = future[0];
       set({
         nodes: next.nodes,
         links: next.links,
-        past: [...past, { nodes, links }],
+        portEdges: next.portEdges ?? [],
+        past: [...past, { nodes, links, portEdges }],
         future: future.slice(1),
         selectedId: null,
       });
@@ -418,7 +420,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
 
     clear: () => {
       snapshot(set, get);
-      set({ nodes: [], links: [], selectedId: null });
+      set({ nodes: [], links: [], portEdges: [], selectedId: null });
       persist(get());
     },
 

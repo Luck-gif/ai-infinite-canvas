@@ -5,12 +5,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { parseIntent, generate, generateStoryboard, previewWorkflow, uploadImage, imageUrl, fetchResult, listLoras, listControlnets, saveTemplate, listUserTemplates, loadUserTemplate, deleteUserTemplate } from './api';
 import { useCanvasStore } from './store';
 import { DEFAULT_GEN_PARAMS } from './types';
-import type { IntentResponse, GenMode, GenParams, CanvasNode, Link } from './types';
+import type { IntentResponse, GenMode, GenParams, CanvasNode, Link, NodeKind } from './types';
 import { MODE_META } from './types';
 import { MaskEditor } from './MaskEditor';
 import { theme } from './theme';
 
 const DISPLAY_W = 280;
+
+const smallBtnCss: React.CSSProperties = {
+  padding: '4px 10px',
+  fontSize: 11,
+  borderRadius: 6,
+  border: '1px solid',
+  cursor: 'pointer',
+  background: 'transparent',
+  whiteSpace: 'nowrap',
+};
 
 const SIZE_PRESETS: { label: string; w: number; h: number }[] = [
   { label: '方图 1:1', w: 1024, h: 1024 },
@@ -101,6 +111,7 @@ export function ControlPanel() {
   }, [error, clearErrorTimer]);
 
   const addNode = useCanvasStore((s) => s.addNode);
+  const addTextNode = useCanvasStore((s) => s.addTextNode);
   const nodeCount = useCanvasStore((s) => s.nodes.length);
   const selectedId = useCanvasStore((s) => s.selectedId);
   const nodes = useCanvasStore((s) => s.nodes);
@@ -169,6 +180,22 @@ export function ControlPanel() {
       setFaceUploadName(name);
     } catch (e) {
       setError('人脸图上传失败：' + ((e as Error)?.message || String(e)));
+    }
+  };
+
+  // v5.1: 图生视频 - 尾帧上传
+  const [endFrameUploadName, setEndFrameUploadName] = useState<string>('');
+  const [_endFrameUploadPreview, setEndFrameUploadPreview] = useState<string>('');
+  const _onPickEndFrameFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    try {
+      const dataUrl = await fileToBase64(file);
+      setEndFrameUploadPreview(dataUrl);
+      const name = await uploadImage(`endframe_${Date.now()}_${file.name}`, dataUrl);
+      setEndFrameUploadName(name);
+    } catch (e) {
+      setError('尾帧上传失败：' + ((e as Error)?.message || String(e)));
     }
   };
 
@@ -534,6 +561,7 @@ export function ControlPanel() {
           scene_weight: p.sceneWeight,
           prop_image: propImage,
           prop_weight: p.propWeight,
+          end_image: p.mode === 'img2vid' ? endFrameUploadName || undefined : undefined,
         });
         setLiveWorkflow(preview.workflow);
       } catch {
@@ -569,6 +597,7 @@ export function ControlPanel() {
         scene_weight: p.sceneWeight,
         prop_image: propImage,
         prop_weight: p.propWeight,
+        end_image: p.mode === 'img2vid' ? endFrameUploadName || undefined : undefined,
       });
       const promptId = res.prompt_id;
       if (!promptId) {
@@ -686,6 +715,7 @@ export function ControlPanel() {
             seed,
             negative: p.negative,
             createdAt: Date.now(),
+            endFrameImage: p.mode === 'img2vid' ? endFrameUploadName || undefined : undefined,
           });
         });
       }
@@ -748,12 +778,49 @@ export function ControlPanel() {
       {/* v4.51: 层级上下文提示 */}
       <PanelHint layer={activeLayer} />
 
+      {/* v5.1 画布元素快捷添加: 文本注释 / 音频节点 */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <button
+          onClick={() => { addTextNode(); }}
+          style={{
+            ...smallBtnCss,
+            background: 'rgba(164, 107, 255, 0.12)',
+            borderColor: 'rgba(164, 107, 255, 0.3)',
+            color: '#c4a0ff',
+          }}
+        >
+          📝 添加文本
+        </button>
+        <button
+          onClick={() => {
+            addNode({
+              id: crypto.randomUUID(),
+              filename: 'audio_placeholder',
+              prompt: '',
+              x: 320, y: 80,
+              width: 300, height: 80,
+              kind: 'audio' as NodeKind,
+              mode: 'txt2vid',
+              templateId: '',
+            } as CanvasNode);
+          }}
+          style={{
+            ...smallBtnCss,
+            background: 'rgba(160, 107, 255, 0.12)',
+            borderColor: 'rgba(160, 107, 255, 0.3)',
+            color: '#c4a0ff',
+          }}
+        >
+          🎵 添加音频
+        </button>
+      </div>
+
       {/* 图生图 / 局部重绘 输入区 */}
-      {(p.mode === 'img2img' || p.mode === 'inpaint') && (
+      {(p.mode === 'img2img' || p.mode === 'inpaint' || p.mode === 'img2vid') && (
         <div style={cardStyle}>
-          <div style={{ ...labelStyle, marginBottom: 8 }}>输入图</div>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>{p.mode === 'img2vid' ? '首帧' : '输入图'}</div>
           <label style={fileBtnStyle}>
-            上传图片
+            {p.mode === 'img2vid' ? '上传首帧' : '上传图片'}
             <input
               type="file"
               accept="image/*"
@@ -768,8 +835,38 @@ export function ControlPanel() {
           )}
           {!uploadName && !selectedNode && (
             <div style={{ marginTop: 8, fontSize: 12, color: theme.accent.amber }}>
-              请上传图片，或在画布中选中一个已生成节点
+              请上传{ p.mode === 'img2vid' ? '首帧' : '' }图片，或在画布中选中一个已生成节点
             </div>
+          )}
+
+          {/* v5.1: 图生视频 - 尾帧上传 */}
+          {p.mode === 'img2vid' && (
+            <>
+              <div style={{ ...labelStyle, marginTop: 12, marginBottom: 8 }}>尾帧（可选）</div>
+              <label style={fileBtnStyle}>
+                上传尾帧
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => onPickEndFrameFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              {endFrameUploadPreview && (
+                <div style={{ marginTop: 8 }}>
+                  <img src={endFrameUploadPreview} alt="尾帧预览"
+                    style={{ width: '100%', maxHeight: 100, objectFit: 'contain', borderRadius: 6, border: `1px solid ${theme.border.subtle}` }} />
+                  <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
+                    {endFrameUploadName}
+                  </div>
+                </div>
+              )}
+              {!endFrameUploadName && (
+                <div style={{ marginTop: 6, fontSize: 11, color: theme.text.dim }}>
+                  留空则无尾帧约束；也可在画布中通过端口连线传入
+                </div>
+              )}
+            </>
           )}
 
           {p.mode === 'inpaint' && (

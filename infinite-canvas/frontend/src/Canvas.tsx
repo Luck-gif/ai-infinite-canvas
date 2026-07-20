@@ -21,7 +21,7 @@ import { getNodeLayer } from './types';
 import { computeEdges, computeLinks } from './graph';
 import type { LinkEdge } from './graph';
 import { MODE_META } from './types';
-import type { CanvasNode, ShotStatus, NodePort, PortEdge, NodeKind } from './types';
+import type { CanvasNode, ShotStatus, NodeKind } from './types';
 import { defaultPortsForKind } from './types';
 import { theme } from './theme';
 
@@ -36,8 +36,8 @@ const PORT_COLORS: Record<string, string> = {
   control: theme.accent.green,
 };
 
-/** 端口类型 → 中文标签 */
-const PORT_LABELS: Record<string, string> = {
+/** 端口类型 → 中文标签（预留给未来端口 tooltip） */
+const _PORT_LABELS: Record<string, string> = {
   image: '图片',
   video: '视频',
   text: '文本',
@@ -127,7 +127,7 @@ function NodeImage({
   isVisible,
   linkingFrom,
   linkingFromPortId,
-  onStartLink,
+  onStartLink: _onStartLink,
   onStartPortLink,
   onDragMove,
   onDragEnd,
@@ -141,10 +141,25 @@ function NodeImage({
 
   const isControl = node.kind === 'control';
   const isVideo = node.kind === 'video' || /\.(mp4|webm|mov|m4v)$/i.test(node.filename || '');
+  const isText = node.kind === 'text';
+  const isAudio = node.kind === 'audio';
   const ctrlColor = node.controlKind === 'controlnet' ? theme.accent.purple : theme.modeColor.outpaint;
 
+  // v5.1 端口系统：从节点 ports 拆分 input/output
+  const nodePorts = node.ports ?? defaultPortsForKind(node.kind as NodeKind);
+  const inputPorts = nodePorts.filter((p) => p.direction === 'input');
+  const outputPorts = nodePorts.filter((p) => p.direction === 'output');
+  const portRadius = 5;
+  const getPortPos = (_port: { direction: string }, i: number, total: number, side: 'left' | 'right') => {
+    const spacing = node.height / (total + 1);
+    return {
+      x: side === 'left' ? 0 : node.width,
+      y: spacing * (i + 1),
+    };
+  };
+
   useEffect(() => {
-    if (isControl) return; // 控制节点无位图，跳过加载
+    if (isControl || isText || isAudio) return; // 控制/文本/音频节点无位图，跳过加载
     if (!isVisible) return; // v4.41 懒加载：视口外不加载
     const w = node.width, h = node.height;
     let alive = true;
@@ -184,6 +199,10 @@ function NodeImage({
 
   const badge = isControl
     ? { label: node.controlKind === 'controlnet' ? 'ControlNet' : 'LoRA', color: ctrlColor }
+    : isText
+    ? { label: node.textData?.role ?? '📝 备注', color: theme.accent.amber }
+    : isAudio
+    ? { label: '🎵 音频', color: theme.accent.purple }
     : node.mode ? MODE_META[node.mode] : null;
   const sub = isControl
     ? [
@@ -200,6 +219,10 @@ function NodeImage({
         }`,
         node.controlImage ? '📎参考图' : null,
       ].filter(Boolean).join(' · ')
+    : isText
+    ? (node.textData?.content ?? '').slice(0, 60) + ((node.textData?.content?.length ?? 0) > 60 ? '…' : '')
+    : isAudio
+    ? 'AI 音频生成'
     : isVideo
     ? [
         node.mode ? MODE_META[node.mode].label : '视频',
@@ -248,15 +271,70 @@ function NodeImage({
         width={node.width}
         height={node.height}
         cornerRadius={8}
-        fill={isControl ? (node.controlKind === 'controlnet' ? theme.bg.controlnet : theme.bg.lora) : theme.bg.nodeCard}
+        fill={isControl ? (node.controlKind === 'controlnet' ? theme.bg.controlnet : theme.bg.lora) : isText ? '#1a1f2e' : isAudio ? '#1e1a2e' : theme.bg.nodeCard}
         stroke={selected || multiSelected ? (multiSelected && !selected ? theme.misc.selectMulti : theme.accent.blue) : theme.border.subtle}
         strokeWidth={selected ? 2.5 : multiSelected ? 2 : 1.5}
         shadowColor="#000"
         shadowBlur={8}
         shadowOpacity={0.4}
       />
-      {!isControl && (
+      {!isControl && !isText && !isAudio && (
         <KonvaImage image={imgRef.current || undefined} width={node.width} height={node.height} cornerRadius={8} />
+      )}
+      {/* v5.1 文本节点：显示内容预览 */}
+      {isText && node.textData && (
+        <Group x={12} y={12}>
+          <Text
+            text={`${node.textData.role === 'prompt' ? '📋' : node.textData.role === 'script' ? '🎬' : node.textData.role === 'description' ? '📖' : '📝'} ${node.textData.role === 'prompt' ? '提示词' : node.textData.role === 'script' ? '脚本' : node.textData.role === 'description' ? '描述' : '备注'}`}
+            fontSize={12}
+            fill={theme.accent.amber}
+            fontStyle="bold"
+          />
+          <Text
+            text={node.textData.content.slice(0, 180)}
+            y={22}
+            width={node.width - 24}
+            fontSize={node.textData.fontSize ?? 13}
+            fill={theme.text.secondary}
+            fontFamily="'JetBrains Mono', 'Input Mono', monospace"
+            lineHeight={1.5}
+          />
+          {node.textData.content.length > 180 && (
+            <Text text="… (双击编辑)" y={node.height - 54} fontSize={10} fill={theme.text.dim} />
+          )}
+        </Group>
+      )}
+      {/* v5.1 音频节点：波形占位 + 播放控制 */}
+      {isAudio && (
+        <Group x={16} y={16}>
+          {/* 波形占位线条 */}
+          {Array.from({ length: 16 }).map((_, i) => (
+            <Line
+              key={`wave-${i}`}
+              points={[i * 17, 30 + Math.sin(i * 0.7) * 8, i * 17, 30 - Math.sin(i * 0.7) * 8]}
+              stroke={theme.accent.purple}
+              strokeWidth={3}
+              opacity={0.5 + Math.random() * 0.5}
+              lineCap="round"
+            />
+          ))}
+          <Text
+            text="🔊 音频"
+            x={0} y={0}
+            fontSize={13}
+            fill={theme.accent.purple}
+            fontStyle="bold"
+          />
+          <Text
+            text={node.prompt || '未生成音频'}
+            x={0} y={20}
+            width={node.width - 32}
+            fontSize={11}
+            fill={theme.text.dim}
+            ellipsis
+            wrap="none"
+          />
+        </Group>
       )}
       {/* 视频节点：居中播放角标，提示可点击播放 */}
       {isVideo && (
@@ -275,7 +353,10 @@ function NodeImage({
       {/* 标题条 */}
       <Group x={0} y={node.height - 30}>
         <Rect width={node.width} height={30} cornerRadius={[0, 0, 8, 8]} fill={theme.bg.canvas} opacity={0.82} />
-        <Text text={node.prompt || node.filename} x={8} y={3} width={node.width - 16} height={14} fontSize={12} fill={theme.text.secondary} ellipsis wrap="none" />
+        <Text
+          text={isText ? (node.textData?.content ?? '文本').slice(0, 30) : (node.prompt || node.filename)}
+          x={8} y={3} width={node.width - 16} height={14} fontSize={12} fill={theme.text.secondary} ellipsis wrap="none"
+        />
         <Text text={sub} x={8} y={16} width={node.width - 16} height={12} fontSize={10} fill={theme.text.dim} ellipsis wrap="none" />
       </Group>
       {/* v5.1 端口系统: 输入端口(左侧) + 输出端口(右侧) */}
@@ -343,6 +424,30 @@ function NodeImage({
   );
 }
 
+/** v5.1 右键上下文菜单项 */
+function CtxMenuItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        padding: '6px 10px',
+        borderRadius: 4,
+        cursor: 'pointer',
+        fontSize: 12,
+        color: theme.text.secondary,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}
+      onMouseEnter={(e) => { (e.target as HTMLElement).style.background = theme.bg.input; }}
+      onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function Canvas() {
   const nodes = useCanvasStore((s) => s.nodes);
   const links = useCanvasStore((s) => s.links);
@@ -356,6 +461,8 @@ export function Canvas() {
   const setSelectedIds = useCanvasStore((s) => s.setSelectedIds);
   const clearSelection = useCanvasStore((s) => s.clearSelection);
   const addLink = useCanvasStore((s) => s.addLink);
+  const removeNode = useCanvasStore((s) => s.removeNode);
+  const removePortEdge = useCanvasStore((s) => s.removePortEdge);
   // v4.51: 三层画布模式
   const activeLayer = useCanvasStore((s) => s.activeLayer);
   // v5.1: 端口连线
@@ -370,6 +477,9 @@ export function Canvas() {
   // v5.1: 端口连线状态
   const [linkingFromPortId, setLinkingFromPortId] = useState<string | null>(null);
   const [linkingFromNodeId, setLinkingFromNodeId] = useState<string | null>(null);
+  // v5.1: 右键菜单
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // v4.28 框选状态
   const [boxSelect, setBoxSelect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -439,6 +549,25 @@ export function Canvas() {
   };
 
   const onStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    // v5.1 右键菜单
+    if (e.evt.button === 2) {
+      e.evt.preventDefault();
+      if (e.target === e.target.getStage()) { setCtxMenu(null); return; }
+      const stage = stageRef.current;
+      if (!stage) return;
+      const pos = stage.getRelativePointerPosition();
+      if (!pos) return;
+      const hitNode = nodes.find(
+        (n) => pos.x >= n.x && pos.x <= n.x + n.width && pos.y >= n.y && pos.y <= n.y + n.height,
+      );
+      if (hitNode) {
+        select(hitNode.id);
+        setCtxMenu({ x: e.evt.clientX, y: e.evt.clientY, nodeId: hitNode.id });
+      } else {
+        setCtxMenu(null);
+      }
+      return;
+    }
     if (e.target === e.target.getStage()) {
       // v4.28 在空白区域按下 → 开始框选
       if (e.evt.button === 0) {
@@ -603,7 +732,6 @@ export function Canvas() {
   // v5.1 计算端口连线的起止点（用于渲染）
   const portEdgeLines = useMemo(() => {
     const lines: { id: string; x1: number; y1: number; x2: number; y2: number }[] = [];
-    const nodeById = new Map(nodes.map(n => [n.id, n]));
     for (const pe of portEdges) {
       // 找到 fromPort 和 toPort
       let fromX = 0, fromY = 0, toX = 0, toY = 0;
@@ -633,7 +761,24 @@ export function Canvas() {
 
   const onHover = (node: CanvasNode, e: KonvaEventObject<MouseEvent>) => {
     setHover({ node, clientX: e.evt.clientX, clientY: e.evt.clientY });
+    setHoveredNodeId(node.id);
   };
+
+  // v5.1: 获取 hovered 节点相关的端口连线 ID 集合，用于高亮
+  const highlightedPortEdgeIds = useMemo(() => {
+    if (!hoveredNodeId) return new Set<string>();
+    const ids = new Set<string>();
+    const hoveredNode = nodes.find(n => n.id === hoveredNodeId);
+    if (!hoveredNode) return ids;
+    const nodePorts = hoveredNode.ports ?? defaultPortsForKind(hoveredNode.kind as NodeKind);
+    const portIds = new Set(nodePorts.map(p => p.id));
+    for (const pe of portEdges) {
+      if (portIds.has(pe.fromPortId) || portIds.has(pe.toPortId)) {
+        ids.add(pe.id);
+      }
+    }
+    return ids;
+  }, [hoveredNodeId, nodes, portEdges]);
 
   const linkCountOf = (id: string) =>
     links.filter((l) => l.from === id || l.to === id).length;
@@ -693,17 +838,20 @@ export function Canvas() {
             );
           })}
           {/* v5.1 端口连线渲染 */}
-          {portEdgeLines.map((l) => (
-            <Arrow
-              key={'pe-' + l.id}
-              points={[l.x1, l.y1, l.x2, l.y2]}
-              stroke={theme.accent.purple}
-              strokeWidth={2}
-              pointerLength={8}
-              pointerWidth={7}
-              opacity={0.8}
-            />
-          ))}
+          {portEdgeLines.map((l) => {
+            const hl = highlightedPortEdgeIds.has(l.id);
+            return (
+              <Arrow
+                key={'pe-' + l.id}
+                points={[l.x1, l.y1, l.x2, l.y2]}
+                stroke={hl ? theme.accent.amber : theme.accent.purple}
+                strokeWidth={hl ? 3 : 2}
+                pointerLength={hl ? 10 : 8}
+                pointerWidth={hl ? 8 : 7}
+                opacity={hl ? 1 : 0.55}
+              />
+            );
+          })}
           {linkingFrom &&
             linkCursor &&
             (() => {
@@ -755,7 +903,7 @@ export function Canvas() {
               onClick={(id) => select(id)}
               onShiftClick={(id) => toggleSelectNode(id)}
               onHover={onHover}
-              onHoverEnd={() => setHover(null)}
+              onHoverEnd={() => { setHover(null); setHoveredNodeId(null); }}
             />
           )})}
         </Layer>
@@ -806,6 +954,44 @@ export function Canvas() {
             {hover.node.parentId ? '派生自另一节点' : '原创节点'} · 手动关联 {linkCountOf(hover.node.id)}
           </div>
           {hover.node.createdAt && <div style={{ color: theme.text.dim }}>{new Date(hover.node.createdAt).toLocaleString()}</div>}
+        </div>
+      )}
+
+      {/* v5.1 右键上下文菜单 */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            background: theme.bg.hoverCard,
+            border: `1px solid ${theme.border.subtle}`,
+            borderRadius: 8,
+            padding: 4,
+            minWidth: 140,
+            zIndex: 100,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setCtxMenu(null)}
+          onClick={() => setCtxMenu(null)}
+        >
+          <CtxMenuItem icon="✂️" label="删除节点" onClick={() => { removeNode(ctxMenu.nodeId); }} />
+          <CtxMenuItem
+            icon="🔌"
+            label="断开所有端口连线"
+            onClick={() => {
+              const node = nodes.find(n => n.id === ctxMenu.nodeId);
+              if (node) {
+                const pts = node.ports ?? defaultPortsForKind(node.kind as NodeKind);
+                const ptIds = new Set(pts.map(p => p.id));
+                portEdges.forEach(pe => {
+                  if (ptIds.has(pe.fromPortId) || ptIds.has(pe.toPortId)) {
+                    removePortEdge(pe.id);
+                  }
+                });
+              }
+            }}
+          />
         </div>
       )}
 
