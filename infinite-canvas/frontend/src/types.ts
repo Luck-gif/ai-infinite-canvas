@@ -115,7 +115,7 @@ export interface Link {
   label?: string;   // 可选关系标注（如「灵感来源」「同一系列」）
 }
 
-export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend' | 'style_consistency' | 'scene_consistency' | 'prop_consistency' | 'storyboard';
+export type GenMode = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint' | 'txt2vid' | 'img2vid' | 'face_consistency' | 'image_blend' | 'style_consistency' | 'scene_consistency' | 'prop_consistency' | 'storyboard' | 'regional';
 
 /** 节点模式可视化元信息（色标 + 中文名） */
 export const MODE_META: Record<GenMode, { label: string; color: string }> = {
@@ -131,7 +131,7 @@ export const MODE_META: Record<GenMode, { label: string; color: string }> = {
   scene_consistency: { label: '场景一致', color: '#0891b2' },
   prop_consistency: { label: '道具一致', color: '#7c3aed' },
   storyboard: { label: '分镜编排', color: '#f59e0b' },
-};
+  regional: { label: '多角色同框', color: '#06b6d4' },  // v5.1
 
 /** 生成参数（前端参数面板 → /api/generate） */
 export interface GenParams {
@@ -164,6 +164,16 @@ export interface GenParams {
   propWeight: number;          // 道具一致性：道具保持力（v4.37）
   storyboardPrompts: string[]; // 分镜编排：分镜提示词列表（v4.38）
   videoQuality: 'speed' | 'quality'; // 视频质量模式（v5.0 LightX2V）
+  regionalCharacters: RegionalCharacterSlot[]; // 多角色同框 v5.1
+}
+
+/** 多角色同框槽位定义（v5.1） */
+export interface RegionalCharacterSlot {
+  token: string;
+  entity_id: string;
+  prompt: string;
+  region_ratio: number;
+  ipa_weight: number;
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -196,6 +206,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   propWeight: 0.7,
   storyboardPrompts: [],
   videoQuality: 'speed', // v5.0: 默认速度优先（LightX2V）
+  regionalCharacters: [], // v5.1: 多角色同框
 };
 
 /** 模板注册表项（§6.7） */

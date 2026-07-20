@@ -36,12 +36,14 @@
 ## 🟢 P2 — v5.1 发布前增强（进行中）
 
 - [x] **#15 LightX2V + SageAttention** 视频加速管线 ✅ 2026-07-20
-  - `lightx2v_blueprints.py` — Wan2.2/LTX 4步/2步蒸馏蓝图（5-20x 加速）
-  - `sage_attention.py` — INT8/FP8 注意力量化配置（额外 2-3x 加速，显存-30%）
-  - 前端速度/质量切换（ControlPanel ⚡快速/🎬质量按钮）
-  - `video_quality` 参数全链路透传（types.ts → api.ts → main.py → intent_map → comfy_client）
-  - 28 个新 pytest（LightX2V + SageAttention）
-- [ ] **#16 多角色同框** Regional Pipeline（Regional Sampler + 角色 IPAdapter）
+- [x] **#16 多角色同框** Regional Pipeline ✅ 2026-07-20
+  - `regional_pipeline.py` — Regional Sampler + 多 IPAdapter + 注意力掩码
+  - 4种布局：水平2分/垂直2分/2×2四宫格/自由比例
+  - [A]/[B] token 提示词解析 + 区域坐标计算
+  - `/api/regional/generate` 端点 + GenerateRequest 模型
+  - `intent_map.py` regional action + _build_regional 路径
+  - 前端 GenMode 新增 'regional' + RegionalCharacterSlot 接口
+  - 19 个新 pytest
 - [ ] **#17 一致性自动审查** — CLIP embedding 跨节点对比
 - [ ] **#18 IP 相似度预警** — 角色嵌入库+阈值检测
 - [ ] **#19 基础审核** — 节点质量标记 + 批量浏览模式
@@ -77,11 +79,17 @@ GET  /api/health              健康检查
 
 ### 测试
 ```
-218 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v) — 全绿
+237 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v + 19 regional) — 全绿
 TypeScript: tsc 0 error
 ```
 
-### 新增模块（v4.50-v5.0）
+### 进度
+```
+P0: 6/6 ✅  P1: 7/7 ✅  P2: 2/5
+总版本: v5.1
+```
+
+### 新增模块（v4.50-v5.1）
 ```
 pipeline_orchestrator.py   — 7-Agent管线编排器
 workflow_assembler.py      — 蓝图组装引擎
@@ -91,6 +99,7 @@ entity_registry.py         — 实体注册表
 text_production.py         — 多Agent写作管线
 lightx2v_blueprints.py     — LightX2V 4步/2步蒸馏蓝图 (v5.0)
 sage_attention.py          — SageAttention 量化加速配置 (v5.0)
+regional_pipeline.py       — 多角色同框 Regional Sampler (v5.1)
 LayerPanel.tsx              — 三层画布切换
 WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板

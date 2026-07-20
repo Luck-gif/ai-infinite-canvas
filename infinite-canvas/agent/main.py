@@ -168,6 +168,102 @@ class StoryboardResponse(BaseModel):
     template_id: str = "storyboard_sdxl"
 
 
+# ── v5.1 多角色同框 Regional Pipeline ──────────────────────────
+class CharacterSlotModel(BaseModel):
+    token: str                                    # [A], [B], [C]
+    entity_id: str                                # 角色实体 ID
+    prompt: str                                   # 角色描述
+    region_ratio: float = 0.5                     # 占画面比例
+    ipa_weight: float = 0.8                       # IPAdapter 权重
+    start_at: float = 0.0
+    end_at: float = 0.5
+
+
+class RegionalRequest(BaseModel):
+    characters: list[CharacterSlotModel] = Field(..., min_length=2, max_length=8)
+    base_prompt: str = ""                         # 共有场景描述
+    negative: str = ""
+    layout: str = "horizontal"                    # horizontal | vertical | grid2x2 | custom
+    width: int = 1024
+    height: int = 1024
+    steps: int = 20
+    cfg: float = 7.0
+    seed: int = 0
+
+
+class RegionalResponse(BaseModel):
+    validated: bool
+    template_id: str = "regional"
+    prompt_id: str = ""
+    status: str = ""
+    issues: list[str] = []
+    meta: dict = {}
+    workflow: dict | None = None
+
+
+@app.post("/api/regional/generate")
+async def regional_generate(req: RegionalRequest) -> RegionalResponse:
+    """多角色同框区域生成（v5.1）。
+
+    将多个角色实体在同一画面中分离生成，使用 SDXL Regional Sampler
+    + 每角色独立 IPAdapter + 区域注意力掩码。
+
+    输入：N 个角色槽位（entity_id + prompt），布局模式，基础场景提示词
+    输出：ComfyUI workflow，可直接提交到 /prompt
+    """
+    from regional_pipeline import (
+        RegionalConfig, CharacterSlot, LayoutMode, run_regional,
+    )
+    layout_map = {
+        "horizontal": LayoutMode.HORIZONTAL,
+        "vertical": LayoutMode.VERTICAL,
+        "grid2x2": LayoutMode.GRID2X2,
+        "custom": LayoutMode.CUSTOM,
+    }
+    layout = layout_map.get(req.layout, LayoutMode.HORIZONTAL)
+
+    slots = [
+        CharacterSlot(
+            token=c.token,
+            entity_id=c.entity_id,
+            prompt=c.prompt,
+            region_ratio=c.region_ratio,
+            ipa_weight=c.ipa_weight,
+            start_at=c.start_at,
+            end_at=c.end_at,
+        )
+        for c in req.characters
+    ]
+
+    config = RegionalConfig(
+        slots=slots,
+        layout=layout,
+        width=req.width,
+        height=req.height,
+        base_prompt=req.base_prompt,
+        negative=req.negative,
+        steps=req.steps,
+        cfg=req.cfg,
+        seed=req.seed,
+    )
+
+    result = run_regional(config)
+
+    if result.get("error"):
+        return RegionalResponse(
+            validated=False,
+            status="error",
+            issues=result.get("issues", []),
+        )
+
+    return RegionalResponse(
+        validated=True,
+        status="built",
+        meta=result.get("meta", {}),
+        workflow=result.get("workflow"),
+    )
+
+
 # ── v4.39 视频拼接 ─────────────────────────────────────────────
 _COMFYUI_OUTPUT_DIR = os.environ.get(
     "COMFYUI_OUTPUT_DIR",

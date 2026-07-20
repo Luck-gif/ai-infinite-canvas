@@ -352,3 +352,48 @@ export async function batchGenerateStoryboard(
   onProgress?.(result.frames.filter((f) => f.status === 'done').length, params.prompts.length);
   return result;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// v5.1 Regional Pipeline · 多角色同框
+// ═══════════════════════════════════════════════════════════════
+
+export interface RegionalGenerateRequest {
+  characters: Array<{
+    token: string;
+    entity_id: string;
+    prompt: string;
+    region_ratio: number;
+    ipa_weight: number;
+  }>;
+  base_prompt: string;
+  negative?: string;
+  layout?: 'horizontal' | 'vertical' | 'grid2x2' | 'custom';
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg?: number;
+  seed?: number;
+}
+
+export interface RegionalGenerateResponse {
+  validated: boolean;
+  template_id: string;
+  prompt_id: string;
+  status: string;
+  issues: string[];
+  meta: Record<string, unknown>;
+  workflow: Record<string, unknown> | null;
+}
+
+export async function regionalGenerate(req: RegionalGenerateRequest): Promise<RegionalGenerateResponse> {
+  const res = await fetch(`${BASE}/api/regional/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => 'unknown error');
+    throw new Error(`regional generate failed: ${res.status} ${detail}`);
+  }
+  return res.json() as Promise<RegionalGenerateResponse>;
+}

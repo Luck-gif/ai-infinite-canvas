@@ -82,6 +82,8 @@ def _coerce_action(action: str, input_image: str | None, mask_image: str | None)
     """
     if action in ("txt2vid", "img2vid"):
         return action, False
+    if action == "regional":    # v5.1 多角色同框
+        return action, False
     if action == "inpaint":
         if input_image and mask_image:
             return "inpaint", False
@@ -169,6 +171,10 @@ def build_workflow(
         "model_token": tok or "default", "prompt": prompt,
         "batch_size": batch_size, "seed": seed,
     }
+
+    # ── v5.1 Regional Pipeline：多角色同框 ──
+    if action == "regional":
+        return _build_regional(template, params, prompt, negative, width, height, seed)
 
     # ── Phase 9 + v5.0 LightX2V：视频生成（文生 / 图生）──
     if action in ("txt2vid", "img2vid"):
@@ -405,3 +411,67 @@ def build_workflow(
 
     meta["workflow_graph"] = cc.workflow_to_graph(wf)
     return template_id, wf, meta
+
+
+def _build_regional(
+    template: dict[str, Any],
+    params: dict[str, Any],
+    prompt: str,
+    negative: str,
+    width: int,
+    height: int,
+    seed: int,
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """构建多角色同框 Regional Pipeline 工作流（v5.1）。"""
+    from regional_pipeline import (
+        RegionalConfig, CharacterSlot, LayoutMode, run_regional,
+    )
+
+    chars_raw = params.get("characters") or []
+    slots: list[CharacterSlot] = []
+    tokens = ["A", "B", "C", "D", "E", "F", "G", "H"]
+    for i, ch in enumerate(chars_raw):
+        if not isinstance(ch, dict):
+            continue
+        slots.append(CharacterSlot(
+            token=ch.get("token", tokens[i]),
+            entity_id=ch.get("entity_id", ""),
+            prompt=ch.get("prompt", ""),
+            region_ratio=ch.get("region_ratio", 1.0 / max(len(chars_raw), 1)),
+            ipa_weight=ch.get("ipa_weight", 0.8),
+        ))
+
+    layout_map = {
+        "horizontal": LayoutMode.HORIZONTAL,
+        "vertical": LayoutMode.VERTICAL,
+        "grid2x2": LayoutMode.GRID2X2,
+        "custom": LayoutMode.CUSTOM,
+    }
+    layout = layout_map.get(params.get("layout", "horizontal"), LayoutMode.HORIZONTAL)
+
+    config = RegionalConfig(
+        slots=slots,
+        layout=layout,
+        width=width,
+        height=height,
+        base_prompt=params.get("base_prompt", prompt),
+        negative=negative,
+        steps=int(params.get("steps", 20)),
+        cfg=float(params.get("cfg", 7.0)),
+        seed=seed,
+    )
+
+    result = run_regional(config)
+    wf = result.get("workflow", {})
+    meta: dict[str, Any] = {
+        "action": "regional",
+        "model_token": "sdxl",
+        "prompt": result.get("meta", {}).get("prompt", prompt),
+        "batch_size": 1,
+        "seed": seed,
+        "issues": result.get("issues", []),
+        "regional": True,
+        "num_characters": config.num_slots,
+    }
+    meta["workflow_graph"] = cc.workflow_to_graph(wf)
+    return result.get("template_id", "regional"), wf, meta
