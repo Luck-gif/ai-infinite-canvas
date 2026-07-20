@@ -78,6 +78,8 @@ interface CanvasState {
   wfOpen: boolean;
 
   addNode: (n: CanvasNode) => void;
+  /** v5.0 添加文本注释节点（纯画布元素，无后端生成） */
+  addTextNode: () => void;
   /** 请求画布平移聚焦到指定节点 */
   requestFocus: (id: string) => void;
   /** 拖动中实时更新（不记入历史） */
@@ -216,7 +218,42 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
 
     addNode: (n) => {
       snapshot(set, get);
+      // v5.0: 自动初始化 ports
+      if (!n.ports && n.kind) {
+        try {
+          const { defaultPortsForKind } = require('./types');
+          n.ports = defaultPortsForKind(n.kind);
+        } catch { /* types.ts 稍后更新 */ }
+      }
       set((s) => ({ nodes: [...s.nodes, n], selectedId: n.id }));
+      persist(get());
+    },
+
+    addTextNode: () => {
+      const state = get();
+      const id = crypto.randomUUID();
+      const x = 100 + Math.random() * 300;
+      const y = 100 + Math.random() * 200;
+      const textNode: CanvasNode = {
+        id,
+        filename: '',
+        prompt: '',
+        templateId: 'text',
+        x, y,
+        width: 260,
+        height: 120,
+        kind: 'text',
+        textData: {
+          content: '双击编辑文本...',
+          role: 'note',
+          fontSize: 14,
+        },
+        ports: [
+          { id: "text-out-0", label: "文本输出", direction: "output", type: "text", connectedTo: [] },
+        ],
+      };
+      snapshot(set, state);
+      set((s) => ({ nodes: [...s.nodes, textNode], selectedId: id }));
       persist(get());
     },
 

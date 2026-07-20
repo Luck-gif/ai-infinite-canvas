@@ -1,34 +1,45 @@
-"""无限画布 v4.50 · 视频生成蓝图库（Wan2.2 / LTX / CogVideo）。
+"""无限画布 v5.0 · 视频生成蓝图库（Wan2.2 / LTX / CogVideo）。
 
-设计要点（§4.2 / §9.3）：
-- Wan2.2 fp8 为默认生产管线（24GB VRAM 可用，RTX 5080 16GB 需 GGUF）
-- LTX 为轻量蒸馏方案（4 步推理），用于快速预览
-- 蓝图产出的 ComfyUI JSON 经 validator 校验后再提交
-- 所有模型路径指向共享库 `SHARED_MODEL_LIB`，不硬编码
+v5.0 模型定型（对齐 comfy_client.py 统一选型）：
+  - 主力 T2V: Wan2.2 Bernini R (双 UNET 蒸馏，Apache 2.0)
+  - 主力 I2V: Wan2.2 I2V 14B fp8 (双 UNET 蒸馏，Apache 2.0)
+  - 预览/速度: LTX LightX2V (2-4 步蒸馏，Apache 2.0)
+  - 备用: CogVideoX 5B (Apache 2.0)
 
-蓝图注册表（§3.2 工作流组装时引用）：
-- wan2.2_t2v_fp8    : Wan2.2 文生视频（fp8 量化，24GB）
-- wan2.2_t2v_gguf   : Wan2.2 文生视频（GGUF Q5，16GB）
-- wan2.2_i2v_fp8    : Wan2.2 图生视频（fp8 量化）
-- ltx_t2v           : LTX 文生视频（4 步蒸馏）
-- cogvideo_t2v      : CogVideoX（备用）
+所有模型常量从 comfy_client.py 导入，此文件为蓝图层（已废弃直接定义，
+后续统一到 comfy_client.VIDEO_T2V_HIGH/LOW 和 VIDEO_I2V_HIGH/LOW）。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# ── 共享库模型路径（§4.1 模型选型表）──────────────────────────────
 import os
 
 _SHARED = os.environ.get("SHARED_MODEL_LIB", r"C:\ai_comfyui_dd\models")
 
-# Wan2.2 模型（DiT 架构，MIT 许可证）
-WAN22_T2V_FP8_UNET = "wan2.2_t2v_14B_fp8_e4m3fn.safetensors"
-WAN22_T2V_GGUF_UNET = "wan2.2_t2v_14B_Q5_K_M.gguf"
-WAN22_I2V_FP8_UNET = "wan2.2_i2v_14B_720P_fp8_e4m3fn.safetensors"
-WAN22_CLIP = "umt5_xxl_fp8_e4m3fn_clip_l.safetensors"
-WAN22_VAE = "wan_2.1_vae.safetensors"
+# ── v5.0 模型常量（从 comfy_client.py 统一导入，此处保留向后兼容别名）──
+# 所有新蓝图应直接引用 comfy_client.VIDEO_T2V_HIGH 等常量，此处仅作过渡。
+try:
+    from comfy_client import (
+        VIDEO_T2V_HIGH, VIDEO_T2V_LOW,
+        VIDEO_I2V_HIGH, VIDEO_I2V_LOW,
+        VIDEO_CLIP, VIDEO_VAE,
+    )
+    WAN22_T2V_FP8_UNET = VIDEO_T2V_LOW   # 向后兼容（低噪 UNET）
+    WAN22_T2V_GGUF_UNET = "wan2.2_t2v_14B_Q5_K_M.gguf"  # GGUF 无 Barnini 版本，保留
+    WAN22_I2V_FP8_UNET = VIDEO_I2V_LOW   # 向后兼容
+    WAN22_CLIP = VIDEO_CLIP
+    WAN22_VAE = VIDEO_VAE
+    _CANONICAL_IMPORT_OK = True
+except ImportError:
+    # 降级：直接定义（comfy_client.py 不可用时）
+    WAN22_T2V_FP8_UNET = "wan2.2_bernini_r_low_noise_mxfp8.safetensors"
+    WAN22_T2V_GGUF_UNET = "wan2.2_t2v_14B_Q5_K_M.gguf"
+    WAN22_I2V_FP8_UNET = "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
+    WAN22_CLIP = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    WAN22_VAE = "wan_2.1_vae.safetensors"
+    _CANONICAL_IMPORT_OK = False
 
 # LTX 模型（Apache 2.0 许可证）
 LTX_T2V_UNET = "ltx_video_2b_0.9.5.safetensors"

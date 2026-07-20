@@ -1638,6 +1638,46 @@ async def health() -> dict:
     return {"status": "ok", "comfyui_url": cc.COMFYUI_URL}
 
 
+# ── v5.0 工作流执行链（LibTV 风格：连线即执行）────────────────
+
+
+class ExecuteChainRequest(BaseModel):
+    """工作流链式执行请求。"""
+    root_node_id: str
+    nodes: list[dict[str, Any]]    # CanvasNode 列表（含 kind/prompt/ports 等）
+    port_edges: list[dict[str, Any]] = []  # PortEdge 列表
+
+
+@app.post("/api/workflow/execute-chain")
+async def execute_chain_endpoint(req: ExecuteChainRequest) -> dict:
+    """沿端口连线拓扑排序 → 逐个节点执行生成 → 汇总结果。
+
+    这是 v5.0 的核心端点："拖线连接多个节点 → 一键全链路生成"。
+
+    请求体:
+        root_node_id: 链路起点节点 ID
+        nodes: 画布节点列表（每个节点含 kind/prompt/ports/mode 等字段）
+        port_edges: 端口间连线
+
+    返回:
+        results: [{"node_id", "status", "output_file", "prompt_id", "error"}, ...]
+    """
+    from workflow_executor import execute_chain as _exec
+    results = _exec(req.root_node_id, req.nodes, req.port_edges, wait=True)
+    return {
+        "results": [
+            {
+                "node_id": r.node_id,
+                "status": r.status,
+                "output_file": r.output_file,
+                "prompt_id": r.prompt_id,
+                "error": r.error,
+            }
+            for r in results
+        ],
+    }
+
+
 @app.get("/api/image/{filename}")
 async def get_image(filename: str) -> Response:
     """代理 ComfyUI 输出图片（/view），前端画布经同源 /api/image 加载，免 CORS。"""

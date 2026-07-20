@@ -1084,12 +1084,14 @@ def _build_wan_video(
     high_model: str,
     low_model: str,
     start_image: str | None = None,   # I2V：已上传到 input/ 的文件名；None=T2V
+    end_image: str | None = None,     # 🆕 v5.0: 尾帧图片（I2V 首尾帧模式）
     prefix: str = "ic_video",
 ) -> dict[str, Any]:
-    """构造 Wan2.2 视频工作流（文生/图生统一）。
+    """构造 Wan2.2 视频工作流（文生/图生统一，v5.0 首尾帧支持）。
 
     - T2V：start_image=None，WanImageToVideo 退化为文生视频潜空间。
     - I2V：start_image=上传文件名，走 start_image 条件。
+    - I2V 首尾帧：end_image=上传文件名，同时走 start_image + end_image（v5.0 🆕）。
     - 双 KSamplerAdvanced 蒸馏：高噪 0→2 + 低噪 2→4（start/end_at_step 切分），
       cfg=1, euler/simple，与官方 Wan2.2 蓝图完全一致。
     - 输出经 VHS_VideoCombine（format=video/h264-mp4）落盘，history 返回 gifs。
@@ -1119,6 +1121,10 @@ def _build_wan_video(
     if start_image:
         wan_in["start_image"] = ["img_src", 0]
         wf["img_src"] = {"class_type": "LoadImage", "inputs": {"image": start_image}}
+    # 🆕 v5.0: 尾帧条件（首尾帧 I2V）
+    if end_image:
+        wan_in["end_image"] = ["img_end", 0]
+        wf["img_end"] = {"class_type": "LoadImage", "inputs": {"image": end_image}}
     wf["wan"] = {"class_type": "WanImageToVideo", "inputs": wan_in}
     # 高噪采样（0→2）
     wf["ks_hi"] = {
@@ -1238,11 +1244,13 @@ def build_img2vid(
     seed: int = 0,
     prefix: str = "ic_img2vid",
     speed_mode: bool = True,  # v5.0: 默认 LightX2V 4步
+    end_image_name: str = "", # 🆕 v5.0: 尾帧图片（ComfyUI input/ 下文件名）
 ) -> dict[str, Any]:
-    """图生视频（Phase 9 + v5.0 LightX2V）。
+    """图生视频（Phase 9 + v5.0 LightX2V + 首尾帧）。
 
     speed_mode=True → LightX2V 4步蒸馏（5x 加速）
     speed_mode=False → 标准双噪 20步（质量优先）
+    end_image_name 非空 → 启用首尾帧模式（Wan2.2 I2V 双图条件）
     """
     if speed_mode:
         try:
@@ -1250,6 +1258,7 @@ def build_img2vid(
             nodes = wan22_i2v_lightx2v(
                 positive=prompt, negative=negative,
                 image_ref=image_name,
+                end_image=end_image_name,  # 🆕 v5.0
                 width=width, height=height, frames=length,
                 steps=4, cfg=3.0, seed=seed,
             )
@@ -1260,5 +1269,5 @@ def build_img2vid(
         prompt=prompt, negative=negative, width=width, height=height,
         length=length, fps=fps, seed=seed,
         high_model=VIDEO_I2V_HIGH, low_model=VIDEO_I2V_LOW,
-        start_image=image_name, prefix=prefix,
+        start_image=image_name, end_image=end_image_name or None, prefix=prefix,  # 🆕 v5.0
     )

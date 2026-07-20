@@ -1,4 +1,64 @@
 // 无限画布 · 前端类型定义（对齐 agent 后端契约 §8.1 / §6.0）
+// v5.0: 端口系统 + 文本/音频节点扩展
+
+// ── v5.0 节点端口系统（LibTV 风格数据流连线）──────────────────────
+
+/** 节点端口：每个 CanvasNode 可定义多个端口，端口间连线即数据流 */
+export interface NodePort {
+  id: string;              // 端口唯一 ID，如 "image-out-0"
+  label: string;           // 显示标签，如 "首帧" / "提示词输入"
+  direction: "input" | "output";
+  type: "image" | "text" | "video" | "audio" | "prompt" | "control";
+  connectedTo: string[];   // 连接到的目标端口 IDs（input 端口连 output 端口）
+}
+
+/** 端口间连线（数据流/控制流） */
+export interface PortEdge {
+  id: string;              // 连线唯一 ID
+  fromPortId: string;      // 源端口 ID（output 方向）
+  toPortId: string;        // 目标端口 ID（input 方向）
+  label?: string;          // 可选标注
+}
+
+/** 按节点 kind 返回默认端口列表 */
+export function defaultPortsForKind(kind: NodeKind): NodePort[] {
+  switch (kind) {
+    case "text":
+      return [
+        { id: "text-out-0", label: "文本输出", direction: "output", type: "text", connectedTo: [] },
+      ];
+    case "image":
+      return [
+        { id: "prompt-in",  label: "提示词",  direction: "input",  type: "prompt",  connectedTo: [] },
+        { id: "ref-in",     label: "参考图",   direction: "input",  type: "image",   connectedTo: [] },
+        { id: "lora-in",    label: "LoRA",     direction: "input",  type: "control", connectedTo: [] },
+        { id: "cn-in",      label: "ControlNet", direction: "input", type: "control", connectedTo: [] },
+        { id: "img-out",    label: "图片输出", direction: "output", type: "image",   connectedTo: [] },
+      ];
+    case "video":
+      return [
+        { id: "prompt-in",  label: "提示词",   direction: "input",  type: "prompt",  connectedTo: [] },
+        { id: "start-in",   label: "首帧",     direction: "input",  type: "image",   connectedTo: [] },
+        { id: "end-in",     label: "尾帧",     direction: "input",  type: "image",   connectedTo: [] },
+        { id: "audio-in",   label: "音频",     direction: "input",  type: "audio",   connectedTo: [] },
+        { id: "video-out",  label: "视频输出", direction: "output", type: "video",   connectedTo: [] },
+      ];
+    case "audio":
+      return [
+        { id: "text-in",    label: "文本/台词", direction: "input",  type: "text",    connectedTo: [] },
+        { id: "audio-out",  label: "音频输出",  direction: "output", type: "audio",   connectedTo: [] },
+      ];
+    case "control":
+      return [
+        { id: "ref-in",     label: "输入图",   direction: "input",  type: "image",   connectedTo: [] },
+        { id: "ctrl-out",   label: "控制信号", direction: "output", type: "control", connectedTo: [] },
+      ];
+    default:
+      return [];
+  }
+}
+
+// ── 基础类型（不变）───────────────────────────────────────────────
 
 /** §8.1.4 结构化意图 */
 export interface Intent {
@@ -69,7 +129,17 @@ export interface PreviewResponse {
   template_id: string;
 }
 
-/** 画布上的图片节点（一张生成结果） */
+/** v5.0 节点种类（扩展音频/文本） */
+export type NodeKind = 'image' | 'control' | 'video' | 'text' | 'audio';
+
+/** 文本节点数据（纯前端渲染，无后端生成） */
+export interface TextNodeData {
+  content: string;           // Markdown 文本内容
+  role: 'prompt' | 'script' | 'note' | 'description';
+  fontSize: number;          // 画布显示字号（默认 14）
+}
+
+/** 画布上的节点（泛化：图片/视频/控制/文本/音频） */
 export interface CanvasNode {
   id: string;
   filename: string;   // ComfyUI 输出文件名
@@ -87,17 +157,24 @@ export interface CanvasNode {
   cfg?: number;             // CFG scale（v4.54）
   createdAt?: number;       // 创建时间戳
   description?: string;      // 节点描述（v4.56）
+  // ── v5.0 端口系统 ──
+  ports?: NodePort[];        // 节点端口列表（新建节点时通过 defaultPortsForKind 初始化）
+  portEdges?: PortEdge[];    // 端口间连线（数据流，取代表层手动 Link）
   // ── 控制节点（§6.22：LoRA / ControlNet 节点化）──
-  kind?: 'image' | 'control' | 'video';   // 节点种类：图片节点 | 控制节点 | 视频节点
+  kind?: NodeKind;           // 节点种类
   controlKind?: 'lora' | 'controlnet'; // 控制节点子类型
   frames?: number;           // 视频节点帧数（v4.32）
   fps?: number;              // 视频节点帧率（v4.32）
+  endFrameImage?: string;    // 🆕 v5.0: 尾帧图片文件名（ComfyUI input/ 下）
   loraName?: string;             // LoRA 文件名（含 .safetensors）
   loraStrength?: number;         // LoRA 强度（model & clip 共用）
   controlType?: string;          // ControlNet 类型（v4.23）
   controlStrength?: number;      // ControlNet 强度（v4.23）
   controlModel?: string;         // ControlNet 模型文件名（含 .safetensors，v4.23）
   controlImage?: string;         // ControlNet 控制图文件名（v4.23，缺省=目标图）
+  // ── v5.0 文本/音频节点数据 ──
+  textData?: TextNodeData;       // 文本节点专用数据
+  // ── 工作流溯源 ──
   workflowGraph?: WorkflowGraph | null; // 该节点由哪个工作流生成（可「查看工作流」）
   // ── v5.3 基础审核（#19）──
   qualityStatus?: NodeQualityStatus; // 质量审核标记

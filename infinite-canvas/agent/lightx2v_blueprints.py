@@ -236,10 +236,12 @@ def wan22_i2v_lightx2v(
     steps: int = 4,
     cfg: float = 3.0,
     seed: int = 0,
+    end_image: str = "",  # 🆕 v5.0: 尾帧图片文件名
 ) -> list[dict[str, Any]]:
-    """Wan2.2 图生视频 · LightX2V 4步蒸馏版（fp8，24GB）。
+    """Wan2.2 图生视频 · LightX2V 4步蒸馏版（fp8，24GB，v5.0 首尾帧）。
 
     相比 wan22_i2v_fp8 (steps=20)：~5x 加速。
+    end_image 非空 → 启用首尾帧模式。
     """
     s = seed if seed > 0 else random.randint(0, 2**32 - 1)
     fps = 16
@@ -260,12 +262,15 @@ def wan22_i2v_lightx2v(
         "scheduler": "adistilled",
         "denoise": 1.0,
     }
+    # 🆕 v5.0: 尾帧条件
+    if end_image:
+        sampler_inputs["end_image"] = [12, 0]
     if sage["attention_mode"] == "sage":
         sampler_inputs["attention_mode"] = "sage"
         sampler_inputs["sage_dtype"] = sage["sage_dtype"]
         sampler_inputs["sage_blkh"] = sage["sage_blkh"]
 
-    return [
+    nodes: list[dict[str, Any]] = [
         _node(1, "WanVideoCLIPLoader", {
             "clip_name": WAN22_CLIP,
             "type": "wan",
@@ -312,6 +317,10 @@ def wan22_i2v_lightx2v(
             "filename_prefix": f"wan22_i2v_lightx2v_{width}x{height}",
         }),
     ]
+    # 🆕 v5.0: 尾帧 LoadImage 节点（条件添加）
+    if end_image:
+        nodes.append(_node(12, "LoadImage", {"image": end_image}))
+    return nodes
 
 
 # ── LightX2V LTX T2V（2步蒸馏极限）───────────────────────────────
