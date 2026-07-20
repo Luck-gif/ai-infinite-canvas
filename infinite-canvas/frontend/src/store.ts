@@ -1,12 +1,12 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
-import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus, NodeQualityStatus } from './types';
+import type { CanvasNode, Link, PortEdge, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus, NodeQualityStatus } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
 /** 序列化：画布节点 + 手动连线 → JSON 字符串 */
-export function serializeNodes(nodes: CanvasNode[], links: Link[] = []): string {
-  return JSON.stringify({ version: 1, nodes, links });
+export function serializeNodes(nodes: CanvasNode[], links: Link[] = [], portEdges: PortEdge[] = []): string {
+  return JSON.stringify({ version: 1, nodes, links, portEdges });
 }
 
 /** 反序列化：JSON 字符串 → 画布节点（容错，非法输入返回 []） */
@@ -39,30 +39,47 @@ export function deserializeLinks(raw: string): Link[] {
   }
 }
 
-function loadInitial(): { nodes: CanvasNode[]; links: Link[] } {
-  if (typeof localStorage === 'undefined') return { nodes: [], links: [] };
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return { nodes: [], links: [] };
-  return { nodes: deserializeNodes(raw), links: deserializeLinks(raw) };
+/** v5.1 反序列化端口连线（容错，缺省/非法返回 []） */
+export function deserializePortEdges(raw: string): PortEdge[] {
+  try {
+    const obj = JSON.parse(raw);
+    const arr = Array.isArray(obj) ? [] : obj?.portEdges;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (e): e is PortEdge =>
+        !!e && typeof e.id === 'string' && typeof e.fromPortId === 'string' && typeof e.toPortId === 'string',
+    );
+  } catch {
+    return [];
+  }
 }
 
-function persist(state: { nodes: CanvasNode[]; links: Link[] }) {
+function loadInitial(): { nodes: CanvasNode[]; links: Link[]; portEdges: PortEdge[] } {
+  if (typeof localStorage === 'undefined') return { nodes: [], links: [], portEdges: [] };
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return { nodes: [], links: [], portEdges: [] };
+  return { nodes: deserializeNodes(raw), links: deserializeLinks(raw), portEdges: deserializePortEdges(raw) };
+}
+
+function persist(state: { nodes: CanvasNode[]; links: Link[]; portEdges: PortEdge[] }) {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, serializeNodes(state.nodes, state.links));
+    localStorage.setItem(STORAGE_KEY, serializeNodes(state.nodes, state.links, state.portEdges));
   } catch {
     /* 配额超限等静默忽略 */
   }
 }
 
-/** 历史快照：同时保存 nodes 与 links，保证撤销/重做一致 */
-type Snapshot = { nodes: CanvasNode[]; links: Link[] };
+/** 历史快照：同时保存 nodes / links / portEdges，保证撤销/重做一致 */
+type Snapshot = { nodes: CanvasNode[]; links: Link[]; portEdges: PortEdge[] };
 /** 撤销历史栈最大深度（防止大量操作后内存膨胀） */
 const MAX_HISTORY = 50;
 
 interface CanvasState {
   nodes: CanvasNode[];
   links: Link[];
+  /** v5.1 端口连线列表 */
+  portEdges: PortEdge[];
   past: Snapshot[];
   future: Snapshot[];
   selectedId: string | null;
@@ -105,6 +122,10 @@ interface CanvasState {
   addLink: (from: string, to: string) => void;
   /** 移除手动关联 */
   removeLink: (id: string) => void;
+  /** v5.1 添加端口连线 */
+  addPortEdge: (pe: PortEdge) => void;
+  /** v5.1 移除端口连线 */
+  removePortEdge: (id: string) => void;
   /** 局部更新节点字段（如控制节点的 LoRA 名称/强度） */
   updateNode: (id: string, patch: Partial<CanvasNode>) => void;
   /** 设置生成前实时工作流（预览） */
@@ -193,11 +214,11 @@ function snapshot(
   set: (fn: (s: CanvasState) => Partial<CanvasState>) => void,
   get: () => CanvasState,
 ) {
-  const { nodes, links } = get();
+  const { nodes, links, portEdges } = get();
   set((s) => ({
     past: s.past.length >= MAX_HISTORY
-      ? [...s.past.slice(-(MAX_HISTORY - 1)), { nodes, links }]
-      : [...s.past, { nodes, links }],
+      ? [...s.past.slice(-(MAX_HISTORY - 1)), { nodes, links, portEdges }]
+      : [...s.past, { nodes, links, portEdges }],
     future: [],
   }));
 }
@@ -207,6 +228,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
   return {
     nodes: init.nodes,
     links: init.links,
+    portEdges: init.portEdges ?? [],
     past: [],
     future: [],
     selectedId: null,
@@ -337,6 +359,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       if (!get().links.some((l) => l.id === id)) return;
       snapshot(set, get);
       set((st) => ({ links: st.links.filter((l) => l.id !== id) }));
+      persist(get());
+    },
+
+    // v5.1 端口连线
+    addPortEdge: (pe) => {
+      if (!pe.fromPortId || !pe.toPortId) return;
+      const s = get();
+      // 去重：已存在同端口连线则忽略
+      if (s.portEdges.some((e) => e.fromPortId === pe.fromPortId && e.toPortId === pe.toPortId)) return;
+      snapshot(set, get);
+      set((st) => ({ portEdges: [...st.portEdges, pe] }));
+      persist(get());
+    },
+
+    removePortEdge: (id) => {
+      if (!get().portEdges.some((e) => e.id === id)) return;
+      snapshot(set, get);
+      set((st) => ({ portEdges: st.portEdges.filter((e) => e.id !== id) }));
       persist(get());
     },
 

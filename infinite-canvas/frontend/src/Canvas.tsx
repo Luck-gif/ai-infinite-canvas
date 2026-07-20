@@ -21,8 +21,30 @@ import { getNodeLayer } from './types';
 import { computeEdges, computeLinks } from './graph';
 import type { LinkEdge } from './graph';
 import { MODE_META } from './types';
-import type { CanvasNode, ShotStatus } from './types';
+import type { CanvasNode, ShotStatus, NodePort, PortEdge, NodeKind } from './types';
+import { defaultPortsForKind } from './types';
 import { theme } from './theme';
+
+// ── v5.1 端口可视化 ──────────────────────────────────────────────
+/** 端口类型 → 颜色映射 */
+const PORT_COLORS: Record<string, string> = {
+  image: theme.accent.blue,
+  video: theme.accent.rose,
+  text: theme.accent.amber,
+  audio: theme.accent.purple,
+  prompt: theme.accent.teal,
+  control: theme.accent.green,
+};
+
+/** 端口类型 → 中文标签 */
+const PORT_LABELS: Record<string, string> = {
+  image: '图片',
+  video: '视频',
+  text: '文本',
+  audio: '音频',
+  prompt: '提示词',
+  control: '控制',
+};
 
 /** v4.59 分镜状态中文标签 */
 function statusLabel(s: ShotStatus): string {
@@ -86,7 +108,10 @@ interface NodeImageProps {
   /** v4.41 懒加载：仅视口内节点才加载位图，减少内存与网络开销 */
   isVisible: boolean;
   linkingFrom: string | null;
+  /** v5.1 端口连线中: 正在拖拽的端口 ID */
+  linkingFromPortId: string | null;
   onStartLink: (id: string) => void;
+  onStartPortLink: (nodeId: string, portId: string) => void;
   onDragMove: (id: string, x: number, y: number) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onClick: (id: string) => void;
@@ -101,7 +126,9 @@ function NodeImage({
   multiSelected,
   isVisible,
   linkingFrom,
+  linkingFromPortId,
   onStartLink,
+  onStartPortLink,
   onDragMove,
   onDragEnd,
   onClick,
@@ -251,30 +278,67 @@ function NodeImage({
         <Text text={node.prompt || node.filename} x={8} y={3} width={node.width - 16} height={14} fontSize={12} fill={theme.text.secondary} ellipsis wrap="none" />
         <Text text={sub} x={8} y={16} width={node.width - 16} height={12} fontSize={10} fill={theme.text.dim} ellipsis wrap="none" />
       </Group>
-      {/* 连线锚点（右侧中点，拖拽可建立手动关联） */}
-      <Group x={node.width} y={node.height / 2}>
-        <Circle
-          radius={7}
-          fill="#ffd166"
-          stroke={theme.bg.canvas}
-          strokeWidth={2}
-          onMouseDown={(e) => {
-            e.cancelBubble = true;
-            groupRef.current?.draggable(false);
-            onStartLink(node.id);
-          }}
-          onMouseEnter={(e) => {
-            const t = e.target as Konva.Circle;
-            t.scale({ x: 1.35, y: 1.35 });
-            document.body.style.cursor = 'crosshair';
-          }}
-          onMouseLeave={(e) => {
-            const t = e.target as Konva.Circle;
-            t.scale({ x: 1, y: 1 });
-            if (!linkingFrom) document.body.style.cursor = 'default';
-          }}
-        />
-      </Group>
+      {/* v5.1 端口系统: 输入端口(左侧) + 输出端口(右侧) */}
+      {inputPorts.map((port, i) => {
+        const pos = getPortPos(port, i, inputPorts.length, 'left');
+        const color = PORT_COLORS[port.type] || '#888';
+        const isConnected = port.connectedTo != null && port.connectedTo !== undefined;
+        return (
+          <Group key={`ip-${port.id}`} x={pos.x} y={pos.y} offsetX={portRadius} offsetY={portRadius}>
+            <Circle
+              radius={portRadius}
+              fill={isConnected ? color : theme.bg.canvas}
+              stroke={color}
+              strokeWidth={2}
+              onMouseDown={(e) => {
+                e.cancelBubble = true;
+                groupRef.current?.draggable(false);
+                onStartPortLink(node.id, port.id);
+              }}
+              onMouseEnter={(e) => {
+                const t = e.target as Konva.Circle;
+                t.scale({ x: 1.3, y: 1.3 });
+                document.body.style.cursor = 'crosshair';
+              }}
+              onMouseLeave={(e) => {
+                const t = e.target as Konva.Circle;
+                t.scale({ x: 1, y: 1 });
+                if (!linkingFromPortId) document.body.style.cursor = 'default';
+              }}
+            />
+          </Group>
+        );
+      })}
+      {outputPorts.map((port, i) => {
+        const pos = getPortPos(port, i, outputPorts.length, 'right');
+        const color = PORT_COLORS[port.type] || '#888';
+        const isConnected = port.connectedTo != null && port.connectedTo !== undefined;
+        return (
+          <Group key={`op-${port.id}`} x={pos.x} y={pos.y} offsetX={-portRadius} offsetY={portRadius}>
+            <Circle
+              radius={portRadius}
+              fill={isConnected ? color : theme.bg.canvas}
+              stroke={color}
+              strokeWidth={2}
+              onMouseDown={(e) => {
+                e.cancelBubble = true;
+                groupRef.current?.draggable(false);
+                onStartPortLink(node.id, port.id);
+              }}
+              onMouseEnter={(e) => {
+                const t = e.target as Konva.Circle;
+                t.scale({ x: 1.3, y: 1.3 });
+                document.body.style.cursor = 'crosshair';
+              }}
+              onMouseLeave={(e) => {
+                const t = e.target as Konva.Circle;
+                t.scale({ x: 1, y: 1 });
+                if (!linkingFromPortId) document.body.style.cursor = 'default';
+              }}
+            />
+          </Group>
+        );
+      })}
     </Group>
   );
 }
@@ -294,12 +358,18 @@ export function Canvas() {
   const addLink = useCanvasStore((s) => s.addLink);
   // v4.51: 三层画布模式
   const activeLayer = useCanvasStore((s) => s.activeLayer);
+  // v5.1: 端口连线
+  const portEdges = useCanvasStore((s) => s.portEdges);
+  const addPortEdge = useCanvasStore((s) => s.addPortEdge);
 
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [linkCursor, setLinkCursor] = useState<{ x: number; y: number } | null>(null);
+  // v5.1: 端口连线状态
+  const [linkingFromPortId, setLinkingFromPortId] = useState<string | null>(null);
+  const [linkingFromNodeId, setLinkingFromNodeId] = useState<string | null>(null);
 
   // v4.28 框选状态
   const [boxSelect, setBoxSelect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -395,7 +465,7 @@ export function Canvas() {
       }
       return;
     }
-    if (!linkingFrom || !stageRef.current) return;
+    if (!linkingFrom && !linkingFromPortId || !stageRef.current) return;
     const pos = stageRef.current.getRelativePointerPosition();
     if (pos) setLinkCursor({ x: pos.x, y: pos.y });
   };
@@ -429,6 +499,56 @@ export function Canvas() {
       return;
     }
 
+    // v5.1 端口连线完成检测
+    if (linkingFromPortId && linkingFromNodeId && stageRef.current) {
+      const pos = stageRef.current.getRelativePointerPosition();
+      if (pos) {
+        // 寻找鼠标落在的节点，并找到最近的输入端口
+        const hitNode = nodes.find(
+          (n) =>
+            pos.x >= n.x &&
+            pos.x <= n.x + n.width &&
+            pos.y >= n.y &&
+            pos.y <= n.y + n.height &&
+            n.id !== linkingFromNodeId,
+        );
+        if (hitNode) {
+          const hitPorts = (hitNode.ports ?? defaultPortsForKind(hitNode.kind as NodeKind)).filter(
+            (p) => p.direction === 'input',
+          );
+          if (hitPorts.length === 1) {
+            addPortEdge({
+              id: `pe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              fromPortId: linkingFromPortId,
+              toPortId: hitPorts[0].id,
+              label: '',
+            });
+          } else if (hitPorts.length > 1) {
+            // 多个输入端口：选择离鼠标最近的
+            const spacing = hitNode.height / (hitPorts.length + 1);
+            let closest = hitPorts[0];
+            let minDist = Infinity;
+            hitPorts.forEach((p, i) => {
+              const py = hitNode.y + spacing * (i + 1);
+              const dist = Math.abs(pos.y - py);
+              if (dist < minDist) { minDist = dist; closest = p; }
+            });
+            addPortEdge({
+              id: `pe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              fromPortId: linkingFromPortId,
+              toPortId: closest.id,
+              label: '',
+            });
+          }
+        }
+      }
+      setLinkingFromPortId(null);
+      setLinkingFromNodeId(null);
+      setLinkCursor(null);
+      document.body.style.cursor = 'default';
+      return;
+    }
+
     if (!linkingFrom || !stageRef.current) return;
     const pos = stageRef.current.getRelativePointerPosition();
     let targetId: string | null = null;
@@ -456,6 +576,60 @@ export function Canvas() {
     setLinkingFrom(id);
     setLinkCursor({ x: c.cx, y: c.cy });
   };
+
+  // v5.1 端口连线起始
+  const startPortLink = (nodeId: string, portId: string) => {
+    const n = nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    setLinkingFromPortId(portId);
+    setLinkingFromNodeId(nodeId);
+    // 从端口的节点坐标开始（相对于 stage）
+    const ports = n.ports ?? defaultPortsForKind(n.kind as NodeKind);
+    const port = ports.find(p => p.id === portId);
+    if (port) {
+      const idx = port.direction === 'input'
+        ? ports.filter(p => p.direction === 'input').indexOf(port)
+        : ports.filter(p => p.direction === 'output').indexOf(port);
+      const total = port.direction === 'input'
+        ? ports.filter(p => p.direction === 'input').length
+        : ports.filter(p => p.direction === 'output').length;
+      const spacing = n.height / (total + 1);
+      const portY = n.y + spacing * (idx + 1);
+      const portX = port.direction === 'input' ? n.x : n.x + n.width;
+      setLinkCursor({ x: portX, y: portY });
+    }
+  };
+
+  // v5.1 计算端口连线的起止点（用于渲染）
+  const portEdgeLines = useMemo(() => {
+    const lines: { id: string; x1: number; y1: number; x2: number; y2: number }[] = [];
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+    for (const pe of portEdges) {
+      // 找到 fromPort 和 toPort
+      let fromX = 0, fromY = 0, toX = 0, toY = 0;
+      for (const n of nodes) {
+        const pts = n.ports ?? defaultPortsForKind(n.kind as NodeKind);
+        const fp = pts.find(p => p.id === pe.fromPortId);
+        const tp = pts.find(p => p.id === pe.toPortId);
+        if (fp) {
+          const total = pts.filter(p => p.direction === fp.direction).length;
+          const idx = pts.filter(p => p.direction === fp.direction).indexOf(fp);
+          const spacing = n.height / (total + 1);
+          fromY = n.y + spacing * (idx + 1);
+          fromX = fp.direction === 'input' ? n.x : n.x + n.width;
+        }
+        if (tp) {
+          const total = pts.filter(p => p.direction === tp.direction).length;
+          const idx = pts.filter(p => p.direction === tp.direction).indexOf(tp);
+          const spacing = n.height / (total + 1);
+          toY = n.y + spacing * (idx + 1);
+          toX = tp.direction === 'input' ? n.x : n.x + n.width;
+        }
+      }
+      lines.push({ id: pe.id, x1: fromX, y1: fromY, x2: toX, y2: toY });
+    }
+    return lines;
+  }, [nodes, portEdges]);
 
   const onHover = (node: CanvasNode, e: KonvaEventObject<MouseEvent>) => {
     setHover({ node, clientX: e.evt.clientX, clientY: e.evt.clientY });
@@ -518,6 +692,18 @@ export function Canvas() {
               />
             );
           })}
+          {/* v5.1 端口连线渲染 */}
+          {portEdgeLines.map((l) => (
+            <Arrow
+              key={'pe-' + l.id}
+              points={[l.x1, l.y1, l.x2, l.y2]}
+              stroke={theme.accent.purple}
+              strokeWidth={2}
+              pointerLength={8}
+              pointerWidth={7}
+              opacity={0.8}
+            />
+          ))}
           {linkingFrom &&
             linkCursor &&
             (() => {
@@ -526,6 +712,24 @@ export function Canvas() {
               const c = center(src);
               return (
                 <Line points={[c.cx, c.cy, linkCursor.x, linkCursor.y]} stroke={theme.accent.yellow} strokeWidth={2} dash={[5, 5]} opacity={0.9} />
+              );
+            })()}
+          {linkingFromPortId &&
+            linkCursor &&
+            (() => {
+              const src = nodes.find((n) => n.id === linkingFromNodeId);
+              if (!src) return null;
+              const ports = src.ports ?? defaultPortsForKind(src.kind as NodeKind);
+              const port = ports.find(p => p.id === linkingFromPortId);
+              if (!port) return null;
+              const directionPorts = ports.filter(p => p.direction === port.direction);
+              const idx = directionPorts.indexOf(port);
+              const spacing = src.height / (directionPorts.length + 1);
+              const px = port.direction === 'input' ? src.x : src.x + src.width;
+              const py = src.y + spacing * (idx + 1);
+              const color = PORT_COLORS[port.type] || '#888';
+              return (
+                <Line points={[px, py, linkCursor.x, linkCursor.y]} stroke={color} strokeWidth={2} dash={[5, 5]} opacity={0.9} />
               );
             })()}
         </Layer>
@@ -543,7 +747,9 @@ export function Canvas() {
               multiSelected={isMultiSelected}
               isVisible={visibleNodeIds ? visibleNodeIds.has(n.id) : true}
               linkingFrom={linkingFrom}
+              linkingFromPortId={linkingFromPortId}
               onStartLink={startLink}
+              onStartPortLink={startPortLink}
               onDragMove={dragMove}
               onDragEnd={commitMove}
               onClick={(id) => select(id)}
