@@ -1,6 +1,6 @@
 // v4.50 工作流生成面板：自然语言→蓝图匹配→组装→校验→ComfyUI JSON
 // 浮动面板，支持拖拽，可提交到 ComfyUI 或查看工作流图
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   generateWorkflow,
   listBlueprints,
@@ -9,7 +9,6 @@ import {
 import type {
   WorkflowGenerateResponse,
   BlueprintItem,
-  WorkflowGraph,
 } from './types';
 import { theme } from './theme';
 import { useCanvasStore } from './store';

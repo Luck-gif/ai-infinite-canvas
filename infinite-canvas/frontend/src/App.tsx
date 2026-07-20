@@ -9,6 +9,7 @@ import { WorkflowLibrary } from './WorkflowLibrary';
 import { WorkflowGeneratePanel } from './WorkflowGeneratePanel';
 import { StoryboardPanel } from './StoryboardPanel';
 import { LayerPanel } from './LayerPanel';
+import { NodeEditPanel } from './NodeEditPanel';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, getStatus } from './api';
@@ -367,6 +368,9 @@ export function App() {
 
       {/* v4.50 三层画布面板 */}
       <LayerPanel />
+
+      {/* v4.54 节点属性编辑面板 */}
+      {selectedId && <NodeEditPanel />}
     </div>
   );
 }

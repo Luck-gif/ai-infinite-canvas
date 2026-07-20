@@ -119,7 +119,6 @@ export function ControlPanel() {
   const timelineClips = useCanvasStore((s) => s.timelineClips);
   // v4.51: 三层画布上下文
   const activeLayer = useCanvasStore((s) => s.activeLayer);
-  const setActiveLayer = useCanvasStore((s) => s.setActiveLayer);
   const [loras, setLoras] = useState<string[]>([]);
   useEffect(() => {
     listLoras().then(setLoras).catch(() => {});
@@ -1606,13 +1605,7 @@ function CollapseHeader({ open, onToggle, title }: { open: boolean; onToggle: ()
   );
 }
 
-// ── v4.51 模式→层级映射 ────────────────────────────────────────────
-const MODE_LAYER: Record<string, string> = {
-  storyboard: 'planning',
-  txt2vid: 'output',
-  img2vid: 'output',
-  // generation（默认覆盖其余模式）
-};
+// ── v4.51 层级色彩 ────────────────────────────────────────────────
 const LAYER_COLORS: Record<string, string> = { planning: '#f0a030', generation: '#4f8cff', output: '#44cc66' };
 
 function SegBtn({ active, onClick, label, small, layer }: { active: boolean; onClick: () => void; label: string; small?: boolean; layer?: string }) {

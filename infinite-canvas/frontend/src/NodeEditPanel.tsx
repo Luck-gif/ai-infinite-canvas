@@ -2,9 +2,9 @@
 // 点击画布节点 → 弹出浮动面板 → 编辑参数 → 重新生成 → 更新节点
 import { useState, useEffect } from 'react';
 import { useCanvasStore } from './store';
-import { generate, previewWorkflow, runPipeline, GenerateResponse, PipelineRunResponse } from './api';
+import { generate, previewWorkflow, runPipeline, type PipelineRunResponse } from './api';
 import { toastChannel } from './App';
-import type { CanvasNode, WorkflowGraph } from './types';
+import type { WorkflowGraph } from './types';
 import { theme } from './theme';
 
 const PANEL_W = 340;
@@ -15,7 +15,7 @@ const S = {
     position: 'absolute',
     right: 0, top: 44, bottom: 0,
     width: PANEL_W,
-    background: theme.bg.surfaceLight,
+    background: theme.bg.surface,
     borderLeft: `1px solid ${theme.border.card}`,
     zIndex: 100,
     overflowY: 'auto',
@@ -128,7 +128,7 @@ export function NodeEditPanel() {
       updateNode(node.id, {
         prompt,
         negative,
-        seed: resp.seed,
+        seed: seed >= 0 ? seed : undefined,
         width: w, height: h,
         steps, cfg,
         filename: url,

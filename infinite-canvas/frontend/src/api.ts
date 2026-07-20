@@ -17,6 +17,7 @@ import type {
   StoryboardPlanRequest,
   StoryboardPlanResponse,
   BlueprintListResponse,
+  WorkflowGraph,
 } from './types';
 
 const BASE = '/api';

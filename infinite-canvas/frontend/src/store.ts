@@ -396,6 +396,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
         links.push({ from: newNodes[i].id, to: newNodes[i + 1].id });
       }
 
+      snapshot(set, get);
+
       set((s) => {
         const newLinks = [...s.links];
         links.forEach((l) => {
@@ -407,8 +409,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
         return { nodes: newNodes, links: newLinks, selectedId: null, activeLayer: 'planning' as const };
       });
 
-      // 记录历史
-      pushUndo();
+      persist(get());
     },
 
     exportCanvas: () => {

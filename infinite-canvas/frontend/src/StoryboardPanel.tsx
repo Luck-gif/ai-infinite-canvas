@@ -12,8 +12,6 @@ interface Props {
 }
 
 export function StoryboardPanel({ onClose }: Props) {
-  const setWfOpen = useCanvasStore((s) => s.setWfOpen);
-  const setLiveWorkflow = useCanvasStore((s) => s.setLiveWorkflow);
   // v4.52: 分镜→画布集成
   const loadStoryboardToCanvas = useCanvasStore((s) => s.loadStoryboardToCanvas);
 
@@ -79,13 +77,6 @@ export function StoryboardPanel({ onClose }: Props) {
   const handleViewShot = (shot: StoryboardShotResult) => {
     // 将单个分镜的 workflow_json 转换为可视图
     toastChannel.push('info', `查看分镜 ${shot.shot_index + 1}: ${shot.prompt.slice(0, 40)}…`);
-    // 如果有工作流 JSON，尝试触发显示
-    if (shot.workflow_json) {
-      try {
-        const jsonStr = JSON.stringify(shot.workflow_json);
-        toastChannel.push('info', `分镜 #${shot.shot_index + 1} 已组装 (${shot.node_count} 节点)`);
-      } catch { /* ignore */ }
-    }
   };
 
   // 预设模板
@@ -272,7 +263,7 @@ export function StoryboardPanel({ onClose }: Props) {
                 title="将分镜序列加载到策划层画布，自动布局并连线"
               >📋 加载到画布</button>
             </div>
-            {result.shots.map((shot, idx) => (
+            {result.shots.map((shot) => (
               <div
                 key={shot.shot_id}
                 style={{
