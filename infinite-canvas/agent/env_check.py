@@ -266,7 +266,7 @@ def check_custom_nodes(object_info: dict[str, Any] | None) -> int:
 # ---------------------------------------------------------------------------
 def check_model_files() -> int:
     print(f"\n{_BLUE}━━━ 6. 模型文件检查 ━━━{_RESET}")
-    lib = os.environ.get("SHARED_MODEL_LIB", r"C:\ai_comfyui_dd\models")
+    lib = os.environ.get("SHARED_MODEL_LIB", "")
     lib_path = Path(lib)
     _info(f"  共享模型库: {lib}")
 
@@ -312,13 +312,12 @@ def check_gpu() -> int:
     # nvidia-smi 可能不在当前 PATH 中，尝试多个路径
     nvidia_smi_paths = [
         "nvidia-smi",
-        r"C:\Windows\System32\nvidia-smi.exe",
-        r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
     ]
     exe = None
     for p in nvidia_smi_paths:
         try:
-            subprocess.run([p, "--version"], capture_output=True, timeout=5, check=True)
+            # --version 在 nvidia-smi 上不可用，改用 -L (list GPUs) 做可用性探测
+            subprocess.run([p, "-L"], capture_output=True, timeout=5, check=True)
             exe = p
             break
         except Exception:
@@ -330,7 +329,7 @@ def check_gpu() -> int:
 
     try:
         result = subprocess.run(
-            [exe, "--query-gpu=name,memory.total,driver_version,cuda_version",
+            [exe, "--query-gpu=name,memory.total,driver_version",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=15,
         )
@@ -339,24 +338,25 @@ def check_gpu() -> int:
             return 0
         for line in result.stdout.strip().split("\n"):
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 4:
-                name, vram_mb, driver, cuda = parts[0], parts[1], parts[2], parts[3]
+            if len(parts) >= 3:
+                name, vram_mb, driver = parts[0], parts[1], parts[2]
                 vram_gb = int(vram_mb) / 1024
                 _pass(f"GPU: {name}")
-                _info(f"  VRAM: {vram_gb:.0f} GB | Driver: {driver} | CUDA: {cuda}")
+                _info(f"  VRAM: {vram_gb:.0f} GB | Driver: {driver}")
                 # 给出生存能力分析
                 if vram_gb >= 72:
                     _info(f"  ✓ 可同时驻留 LLM(~25GB)+SDXL(~7GB)+Wan2.2 14B fp16(~55GB)= 约 87GB 峰值")
                     _info(f"    建议: Wan2.2 使用 fp8 量化(~28GB) 避免 OOM，实现三者同存")
-                elif vram_gb >= 48:
+                elif vram_gb >= 40:
                     _info(f"  ✓ 可同时驻留 LLM+SDXL+Wan2.2 fp8")
                     _info(f"    Wan2.2 14B fp16 可能 OOM，建议用 fp8 量化")
-                elif vram_gb >= 24:
+                elif vram_gb >= 20:
                     _info(f"  ✓ 可同时运行 LLM GGUF(~8GB)+SDXL(~7GB)")
                     _warn(f"    Wan2.2 视频生成可能需要 swap 或降低分辨率")
-                elif vram_gb >= 16:
-                    _warn(f"  ✓ SDXL 可运行，LLM 建议用 Ollama 避免与 ComfyUI 抢显存")
-                    _warn(f"    视频生成不可用（Wan2.2 最低需要 ~16GB fp8）")
+                elif vram_gb >= 15:
+                    _info(f"  ✓ SDXL 可运行，WAN2.2 I2V fp8 (~13.6GB) 可用")
+                    _warn(f"    LLM 建议用 Ollama 避免与 ComfyUI 抢显存")
+                    _warn(f"    WAN2.2 T2V 双模型需 ~28GB，突破 16GB 上限")
                 else:
                     _warn(f"  VRAM 偏低，SDXL 批处理可能受限")
     except FileNotFoundError:
@@ -443,7 +443,7 @@ def main() -> None:
         print(f"{_YELLOW}  WARN 标记项可后续处理（非核心路径依赖）。{_RESET}")
 
     print(f"\n{_BLUE}  启动 Agent 后端:{_RESET}")
-    print(f"    cd infinite-canvas/agent && uvicorn main:app --reload --port 8720")
+    print(f"    cd infinite-canvas/agent && uvicorn main:app --reload --port 5180")
     print(f"{_BLUE}{'='*60}{_RESET}")
 
 

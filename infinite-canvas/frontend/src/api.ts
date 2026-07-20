@@ -1,4 +1,4 @@
-// 无限画布 · API 客户端（封装 §8.1 后端契约；vite 代理 /api → :8000）
+// 无限画布 · API 客户端（封装 §8.1 后端契约；vite 代理 /api → :5180）
 import type {
   IntentResponse,
   GenerateResponse,
@@ -387,7 +387,7 @@ export interface RegionalGenerateResponse {
 }
 
 export async function regionalGenerate(req: RegionalGenerateRequest): Promise<RegionalGenerateResponse> {
-  const res = await fetch(`${BASE}/api/regional/generate`, {
+  const res = await fetch(`${BASE}/regional/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -433,7 +433,7 @@ export async function reviewConsistency(
   nodes: ConsistencyReviewNode[],
   threshold?: number,
 ): Promise<ConsistencyReviewResponse> {
-  const res = await fetch(`${BASE}/api/review/consistency`, {
+  const res = await fetch(`${BASE}/review/consistency`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nodes, threshold: threshold ?? 0.75 }),
@@ -453,7 +453,7 @@ export interface IPCheckResponse {
 }
 
 export async function ipCheck(entityId: string, generatedImage: string, entityName?: string): Promise<IPCheckResponse> {
-  const res = await fetch(`${BASE}/api/guard/ip-check`, {
+  const res = await fetch(`${BASE}/guard/ip-check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ entity_id: entityId, generated_image: generatedImage, entity_name: entityName ?? '' }),
@@ -463,7 +463,7 @@ export async function ipCheck(entityId: string, generatedImage: string, entityNa
 }
 
 export async function ipRegister(entityId: string, referenceImage: string): Promise<{ validated: boolean; entity_id: string; registered: boolean; message: string }> {
-  const res = await fetch(`${BASE}/api/guard/ip-register`, {
+  const res = await fetch(`${BASE}/guard/ip-register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ entity_id: entityId, reference_image: referenceImage }),
@@ -473,7 +473,7 @@ export async function ipRegister(entityId: string, referenceImage: string): Prom
 }
 
 export async function ipLibraryStatus(): Promise<{ total_entities: number; embedding_dim: number; entity_ids: string[]; index_file: string }> {
-  const res = await fetch(`${BASE}/api/guard/ip-library`);
+  const res = await fetch(`${BASE}/guard/ip-library`);
   if (!res.ok) throw new Error(`ip library status failed: ${res.status}`);
   return res.json() as Promise<{ total_entities: number; embedding_dim: number; entity_ids: string[]; index_file: string }>;
 }
@@ -483,7 +483,7 @@ export async function ipLibraryStatus(): Promise<{ total_entities: number; embed
 // ═══════════════════════════════════════════════════════════════
 
 export async function markNodeQuality(nodeId: string, status: string, note?: string): Promise<{ validated: boolean; node_id: string; status: string }> {
-  const res = await fetch(`${BASE}/api/review/quality`, {
+  const res = await fetch(`${BASE}/review/quality`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ node_id: nodeId, status, note }),
@@ -493,11 +493,149 @@ export async function markNodeQuality(nodeId: string, status: string, note?: str
 }
 
 export async function batchMarkQuality(nodeIds: string[], status: string, note?: string): Promise<{ validated: boolean; count: number }> {
-  const res = await fetch(`${BASE}/api/review/batch-quality`, {
+  const res = await fetch(`${BASE}/review/batch-quality`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ node_ids: nodeIds, status, note }),
   });
   if (!res.ok) throw new Error(`batch quality mark failed: ${res.status}`);
   return res.json() as Promise<{ validated: boolean; count: number }>;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.2 端口连线后端 CRUD
+// ═══════════════════════════════════════════════════════════════
+
+export interface PortEdgeItem {
+  id: string;
+  fromPortId: string;
+  toPortId: string;
+  label?: string;
+}
+
+/** 批量保存全部端口连线到后端（覆盖模式） */
+export async function savePortEdges(edges: PortEdgeItem[]): Promise<{ status: string; count: number }> {
+  return postJSON<{ status: string; count: number }>(`${BASE}/port-edges`, { edges });
+}
+
+/** 从后端加载全部端口连线 */
+export async function loadPortEdges(): Promise<{ edges: PortEdgeItem[]; count: number }> {
+  const res = await fetch(`${BASE}/port-edges`);
+  if (!res.ok) return { edges: [], count: 0 };
+  return res.json() as Promise<{ edges: PortEdgeItem[]; count: number }>;
+}
+
+/** 删除单条端口连线 */
+export async function deletePortEdge(edgeId: string): Promise<void> {
+  const res = await fetch(`${BASE}/port-edges/${encodeURIComponent(edgeId)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`delete port edge failed: ${res.status}`);
+}
+
+/** 清空全部端口连线 */
+export async function clearPortEdges(): Promise<void> {
+  const res = await fetch(`${BASE}/port-edges`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`clear port edges failed: ${res.status}`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.2 音频生成
+// ═══════════════════════════════════════════════════════════════
+
+export interface AudioTTSResponse {
+  status: string;
+  prompt_id?: string;
+  error?: string;
+  message?: string;
+  blueprint: Record<string, unknown>;
+}
+
+export interface AudioMusicResponse {
+  status: string;
+  prompt_id?: string;
+  error?: string;
+  message?: string;
+  blueprint: Record<string, unknown>;
+}
+
+/** TTS 语音合成 (CosyVoice2) */
+export async function audioTTS(
+  text: string,
+  speaker?: string,
+  speed?: number,
+  emotion?: string,
+): Promise<AudioTTSResponse> {
+  return postJSON<AudioTTSResponse>(`${BASE}/audio/generate`, {
+    text,
+    speaker: speaker ?? 'default',
+    speed: speed ?? 1.0,
+    emotion: emotion ?? 'neutral',
+  });
+}
+
+/** 音乐生成 (MusicGen) */
+export async function audioMusic(
+  prompt: string,
+  duration?: number,
+  tempo?: number,
+): Promise<AudioMusicResponse> {
+  return postJSON<AudioMusicResponse>(`${BASE}/audio/music`, {
+    prompt,
+    duration: duration ?? 30.0,
+    tempo: tempo ?? 120,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.4 项目导出/导入
+// ═══════════════════════════════════════════════════════════════
+
+export interface ExportProjectRequest {
+  nodes: unknown[];
+  links: unknown[];
+  port_edges: unknown[];
+  layers: unknown[];
+  timeline: unknown[];
+  storyboard_shots: unknown[];
+  entity_ids: string[];
+  workflow_graph?: unknown;
+  include_media?: boolean;
+  export_format?: 'zip' | 'json';
+}
+
+export interface ImportProjectRequest {
+  data: Record<string, unknown>;
+  strategy?: 'merge' | 'replace' | 'preview';
+}
+
+export interface ImportProjectResponse {
+  strategy: string;
+  summary: Record<string, unknown>;
+  imported_entities: number;
+  canvas: Record<string, unknown>;
+  timeline: Record<string, unknown>[];
+  storyboard_shots: Record<string, unknown>[];
+  entities: Record<string, unknown>[];
+  workflow_graph?: Record<string, unknown>;
+}
+
+export async function exportProject(req: ExportProjectRequest): Promise<Blob> {
+  const res = await fetch(`${BASE}/export_project`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`export project failed: ${res.status}`);
+  return res.blob();
+}
+
+export async function importProject(req: ImportProjectRequest): Promise<ImportProjectResponse> {
+  return postJSON<ImportProjectResponse>(`${BASE}/import_project`, req);
+}
+
+export async function importProjectPreview(
+  dataBase64: string,
+): Promise<ImportProjectResponse> {
+  const raw = atob(dataBase64);
+  const json = JSON.parse(raw);
+  return importProject({ data: json, strategy: 'preview' });
 }

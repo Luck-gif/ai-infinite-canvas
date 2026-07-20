@@ -9,10 +9,12 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
 import asyncio
+import traceback
 from typing import Any, AsyncIterator
 
 import json
@@ -20,11 +22,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+_log = logging.getLogger(__name__)
+
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
 _DEFAULT_CLIENT_ID = f"infinite-canvas-{uuid.uuid4().hex[:8]}"
 
 # 共享模型库默认 base_path（与 shared_model_paths.yaml 中 comfy.desktop_0 对齐）
-SHARED_MODEL_LIB = os.environ.get("SHARED_MODEL_LIB", r"C:\ai_comfyui_dd\models")
+SHARED_MODEL_LIB = os.environ.get("SHARED_MODEL_LIB", "")
 
 _object_info_cache: dict[str, Any] | None = None
 
@@ -88,8 +92,14 @@ _NODE_META: dict[str, tuple[str, str]] = {
     "ControlNetApply": ("ControlNet 应用", "cond"),
     "ControlNetApplyAdvanced": ("ControlNet 应用", "cond"),
     "WanImageToVideo": ("Wan 视频潜空间", "latent"),
+    "WanCameraImageToVideo": ("Wan 相机视频", "latent"),
+    "WanFirstLastFrameToVideo": ("Wan 首尾帧视频", "latent"),
+    "Wan22FunControlToVideo": ("Wan Fun 控制视频", "latent"),
     "ModelSamplingSD3": ("采样参数", "sample"),
     "WanVideoModelLoader": ("Wan 模型加载", "model"),
+    "CLIPVisionLoader": ("CLIP 视觉加载", "model"),
+    "CLIPVisionEncode": ("CLIP 视觉编码", "cond"),
+    "SaveAnimatedWEBP": ("保存动画", "io"),
 }
 
 
@@ -260,8 +270,9 @@ def wait_for_result(prompt_id: str, timeout: int = 600, poll: float = 2.0) -> di
                 data = json.loads(r.read().decode())
             if prompt_id in data:
                 return data[prompt_id]
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            import sys as _sys
+            print(f"[warn] /history 轮询异常（{e}），继续等待…", file=_sys.stderr)
         time.sleep(poll)
     raise TimeoutError(f"prompt {prompt_id} 在 {timeout}s 内未完成")
 
@@ -639,6 +650,200 @@ def build_image_blend(
     }
 
 
+# ── v5.4 模板加载引擎 ───────────────────────────────────────────
+_TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+
+
+def _ui_to_api_format(template: dict) -> dict[str, Any]:
+    """将 ComfyUI UI 导出格式（nodes 数组 + links 数组）转换为 API 格式。
+
+    UI 格式: {"nodes": [{id, type, widgets_values[], inputs[{name, widget?, link}]}], "links": [[id, from, slot, to, slot, type]]}
+    API 格式: {"node_id": {"class_type": type, "inputs": {name: value or ["from", slot]}}}
+    """
+    links_map: dict[int, tuple] = {}
+    for link in template.get("links", []):
+        links_map[link[0]] = (str(link[1]), int(link[2]))
+
+    wf: dict[str, Any] = {}
+    for node in template.get("nodes", []):
+        nid = str(node["id"])
+        ct = node["type"]
+        inputs: dict[str, Any] = {}
+        widget_idx = 0
+        wv = node.get("widgets_values", [])
+        for inp in node.get("inputs", []):
+            name = inp["name"]
+            if inp.get("link") is not None and inp["link"] in links_map:
+                inputs[name] = list(links_map[inp["link"]])
+            elif inp.get("widget"):
+                if widget_idx < len(wv):
+                    inputs[name] = wv[widget_idx]
+                widget_idx += 1
+            else:
+                widget_idx += 1
+        wf[nid] = {"class_type": ct, "inputs": inputs}
+    return wf
+
+
+def _inject_params(wf: dict[str, Any], **params: Any) -> dict[str, Any]:
+    """将用户参数注入到 API 格式工作流中。
+
+    通用注入规则（按节点 class_type 匹配）：
+      CheckpointLoaderSimple: ckpt_name ← checkpoint
+      UNETLoader: unet_name, weight_dtype
+      CLIPLoader: clip_name, type
+      VAELoader: vae_name
+      CLIPVisionLoader: clip_name
+      CLIPTextEncode: 第一个=positive ← prompt, 第二个=negative ← negative
+      EmptyLatentImage: width, height, batch_size
+      LoadImage (image_name/mask): image ← image_name / mask_name / control_image
+      KSampler: seed, steps, cfg, sampler_name, scheduler, denoise
+      LoraLoader: lora_name, strength_model/strength_clip ← lora_strength
+      ControlNetLoader: control_net_name
+      WanImageToVideo: width, height, length, batch_size
+      WanCameraImageToVideo: width, height, length, batch_size
+      WanFirstLastFrameToVideo: width, height, length, batch_size
+      Wan22FunControlToVideo: width, height, length, batch_size
+      SaveImage/SaveAnimatedWEBP: filename_prefix, fps
+    """
+    clip_encode_nodes = [(nid, node) for nid, node in wf.items() if node["class_type"] == "CLIPTextEncode"]
+    load_image_nodes = [(nid, node) for nid, node in wf.items() if node["class_type"] == "LoadImage"]
+
+    for nid, node in wf.items():
+        ct = node["class_type"]
+        if ct == "CheckpointLoaderSimple" and "checkpoint" in params:
+            node["inputs"]["ckpt_name"] = params["checkpoint"]
+        elif ct == "UNETLoader":
+            if "unet_name" in params:
+                node["inputs"]["unet_name"] = params["unet_name"]
+            if "weight_dtype" in params:
+                node["inputs"]["weight_dtype"] = params["weight_dtype"]
+        elif ct == "CLIPLoader":
+            if "clip_name" in params:
+                node["inputs"]["clip_name"] = params["clip_name"]
+            if "clip_type" in params:
+                node["inputs"]["type"] = params["clip_type"]
+        elif ct == "VAELoader" and "vae_name" in params:
+            node["inputs"]["vae_name"] = params["vae_name"]
+        elif ct == "CLIPVisionLoader" and "clip_vision_name" in params:
+            node["inputs"]["clip_name"] = params["clip_vision_name"]
+        elif ct == "EmptyLatentImage":
+            if "width" in params:
+                node["inputs"]["width"] = params["width"]
+            if "height" in params:
+                node["inputs"]["height"] = params["height"]
+            if "batch_size" in params:
+                node["inputs"]["batch_size"] = params["batch_size"]
+        elif ct == "KSampler":
+            if "seed" in params:
+                node["inputs"]["seed"] = int(params["seed"])
+            if "steps" in params:
+                node["inputs"]["steps"] = int(params["steps"])
+            if "cfg" in params:
+                node["inputs"]["cfg"] = float(params["cfg"])
+            if "sampler_name" in params:
+                node["inputs"]["sampler_name"] = params["sampler_name"]
+            if "scheduler" in params:
+                node["inputs"]["scheduler"] = params["scheduler"]
+            if "denoise" in params:
+                node["inputs"]["denoise"] = float(params["denoise"])
+        elif ct == "LoraLoader":
+            if "lora_name" in params:
+                node["inputs"]["lora_name"] = params["lora_name"]
+            if "lora_strength" in params:
+                s = float(params["lora_strength"])
+                node["inputs"]["strength_model"] = s
+                node["inputs"]["strength_clip"] = s
+        elif ct == "ControlNetLoader" and "control_net_name" in params:
+            node["inputs"]["control_net_name"] = params["control_net_name"]
+        elif ct == "ControlNetApplyAdvanced" and "control_strength" in params:
+            node["inputs"]["strength"] = float(params["control_strength"])
+        elif ct in ("WanImageToVideo", "WanCameraImageToVideo", "WanFirstLastFrameToVideo", "Wan22FunControlToVideo"):
+            if "width" in params:
+                node["inputs"]["width"] = params["width"]
+            if "height" in params:
+                node["inputs"]["height"] = params["height"]
+            if "length" in params:
+                node["inputs"]["length"] = params["length"]
+            if "batch_size" in params:
+                node["inputs"]["batch_size"] = params["batch_size"]
+        elif ct in ("SaveImage", "SaveAnimatedWEBP"):
+            if "filename_prefix" in params:
+                node["inputs"]["filename_prefix"] = params["filename_prefix"]
+            if ct == "SaveAnimatedWEBP" and "fps" in params:
+                node["inputs"]["fps"] = float(params["fps"])
+
+    if clip_encode_nodes and "prompt" in params:
+        wf[clip_encode_nodes[0][0]]["inputs"]["text"] = params["prompt"]
+    if len(clip_encode_nodes) > 1 and "negative" in params:
+        wf[clip_encode_nodes[1][0]]["inputs"]["text"] = params["negative"]
+
+    if load_image_nodes and "image_name" in params:
+        wf[load_image_nodes[0][0]]["inputs"]["image"] = params["image_name"]
+    if len(load_image_nodes) > 1:
+        if "mask_name" in params:
+            wf[load_image_nodes[1][0]]["inputs"]["image"] = params["mask_name"]
+        if "end_image_name" in params and len(load_image_nodes) >= 2:
+            wf[load_image_nodes[0][0]]["inputs"]["image"] = params["image_name"]
+            wf[load_image_nodes[1][0]]["inputs"]["image"] = params["end_image_name"]
+        if "control_image" in params and len(load_image_nodes) >= 1:
+            wf[load_image_nodes[0][0]]["inputs"]["image"] = params["control_image"]
+        if "ref_image" in params and len(load_image_nodes) >= 1:
+            wf[load_image_nodes[0][0]]["inputs"]["image"] = params["ref_image"]
+        if "control_video" in params and len(load_image_nodes) >= 2:
+            wf[load_image_nodes[1][0]]["inputs"]["image"] = params["control_video"]
+
+    return wf
+
+
+TEMPLATE_REGISTRY: dict[str, str] = {
+    "sdxl-txt2img": "sdxl-txt2img.json",
+    "sdxl-img2img": "sdxl-img2img.json",
+    "sdxl-inpaint": "sdxl-inpaint.json",
+    "sdxl-lora": "sdxl-lora.json",
+    "sdxl-controlnet": "sdxl-controlnet.json",
+    "wan22-img2vid": "wan22-img2vid.json",
+    "wan22-camera": "wan22-camera.json",
+    "wan22-first-last": "wan22-first-last.json",
+    "wan22-fun-control": "wan22-fun-control.json",
+}
+
+
+def load_template(template_name: str) -> dict[str, Any]:
+    """加载模板 JSON 并转换为 API 格式。
+
+    template_name: 注册表中的 key（如 "sdxl-txt2img"）
+    返回 API 格式工作流 dict
+    """
+    if template_name not in TEMPLATE_REGISTRY:
+        raise ValueError(f"未知模板: {template_name!r}，可用: {list(TEMPLATE_REGISTRY.keys())}")
+    filepath = os.path.join(_TEMPLATES_DIR, TEMPLATE_REGISTRY[template_name])
+    with open(filepath, encoding="utf-8") as f:
+        template = json.load(f)
+    return _ui_to_api_format(template)
+
+
+def apply_template(template_name: str, **params: Any) -> dict[str, Any]:
+    """加载模板并注入参数，返回可提交的 ComfyUI API 格式工作流。
+
+    用法：
+        wf = apply_template("sdxl-txt2img", checkpoint="NoobAI-XL-Vpred-v1.0.safetensors",
+                            prompt="a cat", width=1024, height=1024, steps=25, seed=42)
+
+    对于视频模板：
+        wf = apply_template("wan22-img2vid", unet_name="wan2.2_i2v_480p_14b.safetensors",
+                            image_name="start_frame.png", prompt="cinematic motion",
+                            width=832, height=480, length=81, fps=16, seed=42)
+    """
+    wf = load_template(template_name)
+    return _inject_params(wf, **params)
+
+
+def get_template_names() -> list[str]:
+    """返回所有可用模板名称。"""
+    return list(TEMPLATE_REGISTRY.keys())
+
+
 def build_txt2img(
     checkpoint: str,
     prompt: str = "a beautiful scenery",
@@ -653,24 +858,34 @@ def build_txt2img(
     """构造最小可用 txt2img 工作流（CheckpointLoaderSimple 自带 CLIP+VAE）。
 
     默认 checkpoint 取自共享库 checkpoints/ 下已装模型。
+    优先使用模板引擎（v5.4），若模板不可用则回退到硬编码。
     """
-    return {
-        "3": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": seed, "steps": steps, "cfg": cfg,
-                "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
-                "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0],
-                "latent_image": ["5", 0],
+    try:
+        return apply_template("sdxl-txt2img",
+                              checkpoint=checkpoint, prompt=prompt, negative=negative,
+                              width=width, height=height, steps=steps, cfg=cfg,
+                              seed=seed, batch_size=batch_size,
+                              filename_prefix="infinite_canvas")
+    except Exception as _e:
+        _log.warning("模板 sdxl-txt2img 加载失败，回退硬编码工作流: %s\n%s",
+                     _e, traceback.format_exc().strip())
+        return {
+            "3": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": seed, "steps": steps, "cfg": cfg,
+                    "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+                    "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0],
+                    "latent_image": ["5", 0],
+                },
             },
-        },
-        "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
-        "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": max(1, batch_size)}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
-        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["4", 1]}},
-        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
-        "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "infinite_canvas"}},
-    }
+            "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
+            "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": max(1, batch_size)}},
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["4", 1]}},
+            "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+            "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "infinite_canvas"}},
+        }
 
 
 def build_img2img(
@@ -689,12 +904,20 @@ def build_img2img(
 
     - image_name 为已上传到 ComfyUI input/ 的文件名（见 upload_image）。
     - denoise 0.3~0.8 常用；越低越贴近原图（§6.1.2 表）。
-    - VAE 取自 checkpoint（CheckpointLoaderSimple 第 3 输出）。
-    - loras：[{name, strength}]（§6.22 LoRA 节点化）。
-    - controlnets：[{model, type?, strength, image, preprocessor?}]（§6.23 ControlNet 节点化）。
-      type 仅对 union 模型（文件名含 'union'）有效，经 SetUnionControlNetType 指定；
-      其余模型（如 anima-lllite）直传原图，不指定 type。
+    - 优先使用模板引擎（v5.4），若模板不可用则回退到硬编码。
     """
+    if not loras and not controlnets:
+        try:
+            return apply_template("sdxl-img2img",
+                                  checkpoint=checkpoint, prompt=prompt, negative=negative,
+                                  image_name=image_name,
+                                  denoise=max(0.05, min(1.0, denoise)),
+                                  steps=steps, cfg=cfg, seed=seed,
+                                  filename_prefix="infinite_canvas")
+        except Exception as _e:
+            _log.warning("模板 sdxl-img2img 加载失败，回退硬编码工作流: %s\n%s",
+                         _e, traceback.format_exc().strip())
+            pass
     wf: dict[str, Any] = {
         "3": {
             "class_type": "KSampler",
@@ -714,8 +937,6 @@ def build_img2img(
         "10": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "11": {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["4", 2]}},
     }
-    # ── LoRA 注入（§6.22）：将 checkpoint 的 model/clip 经 LoraLoader 链 ──
-    # loras: [{name, strength}]，strength 同时作用于 model 与 clip。
     if loras:
         cur_model, cur_clip = ["4", 0], ["4", 1]
         for i, lr in enumerate(loras or []):
@@ -734,39 +955,30 @@ def build_img2img(
         wf["3"]["inputs"]["model"] = cur_model
         wf["6"]["inputs"]["clip"] = cur_clip
         wf["7"]["inputs"]["clip"] = cur_clip
-    # ── ControlNet 注入（§6.23）：conditioning 经 ControlNetApply 链 ──
-    # controlnets: [{model, type?, strength, image, preprocessor?}]
-    #   - 每项为一张控制图：预处理器(可选) → 提示图；ControlNetLoader；
-    #     union 模型须 SetUnionControlNetType(type)；ControlNetApply 串接正条件。
     if controlnets:
-        cur_pos = ["6", 0]  # 当前正条件（初值=原始 CLIPTextEncode）
+        cur_pos = ["6", 0]
         for i, cn in enumerate(controlnets or []):
             model = cn.get("model") if isinstance(cn, dict) else str(cn)
             ctype = cn.get("type") if isinstance(cn, dict) else None
             strength = float(cn.get("strength", 1.0)) if isinstance(cn, dict) else 1.0
             cimg = cn.get("image") if isinstance(cn, dict) else image_name
-            # 预处理器：优先显式指定，否则按 union type 从注册表推导（单源）
             pre = cn.get("preprocessor") if isinstance(cn, dict) else None
             if not pre and ctype:
                 pre = CONTROLNET_PREPROC.get(ctype)
-            # 控制图加载（与底图独立节点）
             limg = f"cnimg{i}"
             wf[limg] = {"class_type": "LoadImage", "inputs": {"image": cimg}}
-            # 提示图（预处理器可选）
             if pre:
                 hint = [f"cnpre{i}", 0]
                 wf[f"cnpre{i}"] = {"class_type": pre, "inputs": {"image": [limg, 0]}}
             else:
                 hint = [limg, 0]
-            # 加载 controlnet + 如需指定 union 类型
             wf[f"cnld{i}"] = {"class_type": "ControlNetLoader",
                                 "inputs": {"control_net_name": model}}
             cn_node = [f"cnld{i}", 0]
-            if ctype:  # 仅 union 模型
+            if ctype:
                 wf[f"cntyp{i}"] = {"class_type": "SetUnionControlNetType",
                                      "inputs": {"control_net": cn_node, "type": ctype}}
                 cn_node = [f"cntyp{i}", 0]
-            # 串接到正条件
             wf[f"cnapply{i}"] = {
                 "class_type": "ControlNetApply",
                 "inputs": {
@@ -817,12 +1029,22 @@ def build_inpaint(
     """构造局部重绘工作流（§6.1.4）：LoadImage + LoadImageMask → VAEEncodeForInpaint → KSampler。
 
     - image_name：底图（已上传到 ComfyUI input/）。
-    - mask_name：蒙版图（黑底 + 白色为待重绘区，已上传到 input/）；经 LoadImageMask
-      取 red 通道为 MASK（白=1.0=重绘）。
+    - mask_name：蒙版图（黑底 + 白色为待重绘区，已上传到 input/）。
     - grow_mask_by：向外扩张蒙版像素数（默认 6，令接缝更自然，§6.1.4）。
-    - denoise：inpaint 常用 1.0（全新填充）；调低可保留原区域更多结构。
-    - VAE 取自 checkpoint（CheckpointLoaderSimple 第 3 输出）。
+    - 优先使用模板引擎（v5.4），若模板不可用则回退到硬编码。
     """
+    try:
+        return apply_template("sdxl-inpaint",
+                              checkpoint=checkpoint, prompt=prompt, negative=negative,
+                              image_name=image_name, mask_name=mask_name,
+                              denoise=max(0.05, min(1.0, denoise)),
+                              steps=steps, cfg=cfg, seed=seed,
+                              grow_mask_by=max(0, int(grow_mask_by)),
+                              filename_prefix="infinite_canvas")
+    except Exception as _e:
+        _log.warning("模板 sdxl-inpaint 加载失败，回退硬编码工作流: %s\n%s",
+                     _e, traceback.format_exc().strip())
+        pass
     return {
         "3": {
             "class_type": "KSampler",
@@ -1197,6 +1419,19 @@ def _blueprint_nodes_to_wf(nodes: list[dict[str, Any]]) -> dict[str, Any]:
     return wf
 
 
+def _vram_gb() -> float:
+    """获取 GPU VRAM (GB)，使用 nvidia-smi 检测，失败返回 24GB 保守值。"""
+    try:
+        import subprocess
+        raw = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            timeout=5,
+        )
+        return float(raw.decode().strip()) / 1024.0
+    except Exception:
+        return 24.0  # 默认 24GB（保守，会选择 fp8 变体）
+
+
 def build_txt2vid(
     prompt: str = "a cat walking on a sunny beach",
     negative: str = "",
@@ -1208,20 +1443,29 @@ def build_txt2vid(
     prefix: str = "ic_txt2vid",
     speed_mode: bool = True,  # v5.0: 默认 LightX2V 4步
 ) -> dict[str, Any]:
-    """文生视频（Phase 9 + v5.0 LightX2V）。
+    """文生视频（Phase 9 + v5.0 LightX2V v5.4 VRAM自动选型）。
 
     speed_mode=True → LightX2V 4步蒸馏（5x 加速，默认）
     speed_mode=False → 标准双噪 20步（质量优先）
+    v5.4: 自动检测 VRAM 选择合适的 LightX2V 变体（fp8 或 GGUF）
     """
     if speed_mode:
         try:
-            from lightx2v_blueprints import wan22_t2v_lightx2v
-            nodes = wan22_t2v_lightx2v(
+            from lightx2v_blueprints import wan22_t2v_lightx2v, wan22_t2v_lightx2v_gguf
+            # v5.4: VRAM 自动选择 — <20GB 使用 GGUF Q5 变体
+            builder = wan22_t2v_lightx2v_gguf if _vram_gb() < 20 else wan22_t2v_lightx2v
+            nodes = builder(
                 positive=prompt, negative=negative,
                 width=width, height=height, frames=length,
                 steps=4, cfg=3.0, seed=seed,
             )
-            # 转换为 ComfyUI API 格式 {node_id: {class_type, inputs}}
+            # v5.4: 注入 fps / filename_prefix 到保存节点
+            for node in nodes:
+                if node.get("class_type") == "SaveAnimatedWEBP":
+                    node["inputs"]["fps"] = fps
+                if node.get("class_type") in ("SaveAnimatedWEBP", "SaveVideo", "VHS_VideoCombine"):
+                    if "filename_prefix" in node.get("inputs", {}):
+                        node["inputs"]["filename_prefix"] = prefix
             return _blueprint_nodes_to_wf(nodes)
         except ImportError:
             pass  # 降级到标准模式
@@ -1246,11 +1490,12 @@ def build_img2vid(
     speed_mode: bool = True,  # v5.0: 默认 LightX2V 4步
     end_image_name: str = "", # 🆕 v5.0: 尾帧图片（ComfyUI input/ 下文件名）
 ) -> dict[str, Any]:
-    """图生视频（Phase 9 + v5.0 LightX2V + 首尾帧）。
+    """图生视频（Phase 9 + v5.0 LightX2V v5.4 参数转发 + 首尾帧）。
 
     speed_mode=True → LightX2V 4步蒸馏（5x 加速）
     speed_mode=False → 标准双噪 20步（质量优先）
     end_image_name 非空 → 启用首尾帧模式（Wan2.2 I2V 双图条件）
+    优先使用模板引擎（v5.4），若模板不可用则回退。
     """
     if speed_mode:
         try:
@@ -1258,13 +1503,34 @@ def build_img2vid(
             nodes = wan22_i2v_lightx2v(
                 positive=prompt, negative=negative,
                 image_ref=image_name,
-                end_image=end_image_name,  # 🆕 v5.0
+                end_image=end_image_name,
                 width=width, height=height, frames=length,
                 steps=4, cfg=3.0, seed=seed,
             )
+            # v5.4: 注入 fps / filename_prefix
+            for node in nodes:
+                if node.get("class_type") == "SaveAnimatedWEBP":
+                    node["inputs"]["fps"] = fps
+                if node.get("class_type") in ("SaveAnimatedWEBP", "SaveVideo", "VHS_VideoCombine"):
+                    if "filename_prefix" in node.get("inputs", {}):
+                        node["inputs"]["filename_prefix"] = prefix
             return _blueprint_nodes_to_wf(nodes)
         except ImportError:
-            pass  # 降级到标准模式
+            pass  # 降级到模板或标准模式
+    try:
+        template_name = "wan22-first-last" if end_image_name else "wan22-img2vid"
+        return apply_template(template_name,
+                              unet_name=VIDEO_I2V_HIGH,
+                              clip_name=VIDEO_CLIP, clip_vision_name=VIDEO_CLIP,
+                              image_name=image_name,
+                              end_image_name=end_image_name if end_image_name else None,
+                              prompt=prompt, negative=negative,
+                              width=width, height=height, length=length, fps=fps,
+                              seed=seed, filename_prefix=prefix)
+    except Exception:
+        import sys as _sys
+        print("[warn] 视频模板加载失败，回退标准工作流", file=_sys.stderr)
+        pass
     return _build_wan_video(
         prompt=prompt, negative=negative, width=width, height=height,
         length=length, fps=fps, seed=seed,
