@@ -47,6 +47,123 @@ def run_case(label: str, user_input: str) -> dict:
     return res
 
 
+# ── v4.50 Pipeline Orchestrator E2E ────────────────────────────────
+
+
+def test_pipeline_run_basic():
+    """E2E: PipelineOrchestrator /api/pipeline/run 基础执行。"""
+    r = client.post("/api/pipeline/run", json={
+        "prompt": "a cyberpunk city at night with neon lights, rain",
+        "submit": False,
+    })
+    assert r.status_code == 200, f"pipeline/run {r.status_code}: {r.text[:300]}"
+    data = r.json()
+    assert data.get("validated") is True
+    assert data.get("node_count", 0) > 0
+    assert len(data.get("prompt_engineered", "")) > 0
+    assert "pipeline_version" in data
+    assert "blueprint" in data
+    assert len(data.get("workflow_json", {})) > 0
+
+
+def test_pipeline_run_with_blueprint():
+    """E2E: PipelineOrchestrator 指定蓝图执行。"""
+    r = client.post("/api/pipeline/run", json={
+        "prompt": "动漫风格少女，精致线条，柔和上色",
+        "image_blueprint": "txt2img_qwen",
+        "consistency_mode": "auto",
+        "width": 768,
+        "height": 768,
+        "submit": False,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["validated"]
+    assert data["blueprint_id"] == "txt2img_qwen"
+
+
+def test_pipeline_run_anime_auto():
+    """E2E: PipelineOrchestrator 自动匹配动漫风格蓝图。"""
+    r = client.post("/api/pipeline/run", json={
+        "prompt": "动漫风格角色，二次元",
+        "submit": False,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["validated"]
+    assert "qwen" in data["blueprint_id"].lower() or data["blueprint_id"] == "txt2img_sdxl"
+
+
+def test_pipeline_storyboard_basic():
+    """E2E: PipelineOrchestrator 故事板管线。"""
+    r = client.post("/api/pipeline/storyboard", json={
+        "description": "日出时的海边灯塔; 海鸥飞翔在码头; 渔夫收网; 日落余晖中的灯塔",
+        "num_shots": 3,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("total_shots", 0) > 0
+    assert len(data.get("shots", [])) > 0
+    assert "storyboard_id" in data
+    for shot in data["shots"]:
+        assert "prompt" in shot
+        assert "shot_id" in shot
+
+
+def test_pipeline_storyboard_single_shot():
+    """E2E: PipelineOrchestrator 单分镜故事板。"""
+    r = client.post("/api/pipeline/storyboard", json={
+        "description": "a single beautiful scene",
+        "num_shots": 1,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_shots"] == 1
+
+
+def test_workflow_generate_api():
+    """E2E: /api/workflows/generate 端点。"""
+    r = client.post("/api/workflows/generate", json={
+        "prompt": "a beautiful landscape with mountains and a lake",
+        "submit": False,
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("validated") is True
+    assert data.get("node_count", 0) > 0
+    assert data.get("shot_id", "")
+
+
+def test_blueprints_api():
+    """E2E: /api/blueprints 端点返回完整蓝图列表。"""
+    r = client.get("/api/blueprints")
+    assert r.status_code == 200
+    data = r.json()
+    assert "image" in data
+    assert "video" in data
+    assert len(data["image"]) > 0
+    for bp in data["image"]:
+        assert "id" in bp
+        assert "name" in bp
+
+
+def test_pipeline_error_handling():
+    """E2E: 管线错误处理 - 空提示词。"""
+    r = client.post("/api/pipeline/run", json={
+        "prompt": "",
+        "submit": False,
+    })
+    # 空提示词可能导致 422 或 200（取决于后端处理）
+    assert r.status_code in (200, 422)
+
+
+def test_health_check():
+    """E2E: 健康检查端点仍可用。"""
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json().get("status") == "ok"
+
+
 if __name__ == "__main__":
     # 健康检查
     h = client.get("/health").json()
