@@ -197,8 +197,8 @@ const Timeline: React.FC = () => {
       } else {
         setConcatMsg(`拼接失败：${res.issues.join('；')}`);
       }
-    } catch (e: any) {
-      setConcatMsg(`网络错误：${e.message}`);
+    } catch (e: unknown) {
+      setConcatMsg(`网络错误：${(e as Error)?.message || String(e)}`);
     } finally {
       setConcatting(false);
     }

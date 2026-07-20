@@ -11,10 +11,11 @@ import { StoryboardPanel } from './StoryboardPanel';
 import { LayerPanel } from './LayerPanel';
 import { NodeEditPanel } from './NodeEditPanel';
 import { EntityBrowserPanel } from './EntityBrowserPanel';
+import { ChatPanel } from './ChatPanel';
 import StoryboardTimeline from './StoryboardTimeline';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
-import { exportCanvasZip, getStatus } from './api';
+import { exportCanvasZip, exportProject, getStatus } from './api';
 import { theme } from './theme';
 
 interface ToastItem {
@@ -54,6 +55,7 @@ export function App() {
   const [wfGenOpen, setWfGenOpen] = useState(false);
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [entityBrowserOpen, setEntityBrowserOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── v4.42 工作流库回调 ──────────────────────────────────────────
@@ -143,19 +145,64 @@ export function App() {
     }
   };
 
+  const exportProjectFull = async (format: 'zip' | 'json') => {
+    const state = useCanvasStore.getState();
+    try {
+      toastChannel.push('info', '正在导出完整项目…');
+      const blob = await exportProject({
+        nodes: state.nodes,
+        links: state.links,
+        port_edges: state.portEdges,
+        layers: state.layers,
+        timeline: [],
+        storyboard_shots: state.storyboardShots,
+        entity_ids: [],
+        include_media: format === 'zip',
+        export_format: format,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ext = format === 'zip' ? 'zip' : 'json';
+      a.download = `canvas-project-${Date.now()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toastChannel.push('success', `项目导出成功（${format.toUpperCase()}）`);
+    } catch (e) {
+      toastChannel.push('error', '项目导出失败：' + ((e as Error)?.message || String(e)));
+    } finally {
+      setExportMenuOpen(false);
+    }
+  };
+
   const importJSON = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/json';
+    input.accept = '.json,.zip,application/json,application/zip';
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return;
       const fr = new FileReader();
       fr.onload = () => {
         try {
-          const imported = deserializeNodes(String(fr.result));
-          replaceAll(imported);
-          toastChannel.push('success', `导入成功：${imported.length} 个节点`);
+          const text = String(fr.result);
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.meta && parsed.canvas) {
+            const canvas = parsed.canvas as { nodes: unknown[]; links: unknown[]; port_edges?: unknown[] };
+            const imported = deserializeNodes(JSON.stringify({
+              version: 1,
+              nodes: canvas.nodes,
+              links: canvas.links,
+              portEdges: canvas.port_edges ?? [],
+            }));
+            replaceAll(imported);
+            const entityCount = parsed.entities ? (parsed.entities as unknown[]).length : 0;
+            toastChannel.push('success', `项目导入成功：${imported.length} 个节点, ${entityCount} 个实体`);
+          } else {
+            const imported = deserializeNodes(text);
+            replaceAll(imported);
+            toastChannel.push('success', `导入成功：${imported.length} 个节点`);
+          }
         } catch (e) {
           toastChannel.push('error', '导入失败：文件格式无效');
         }
@@ -253,6 +300,40 @@ export function App() {
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* v5.3 Agent 对话入口 */}
+          <button
+            onClick={() => setChatOpen(!chatOpen)}
+            title="Agent 对话：用自然语言描述创作意图"
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: `1.5px solid ${chatOpen ? '#5da3ff' : '#7c3aed80'}`,
+              background: chatOpen
+                ? 'linear-gradient(135deg, #1a2540, #1e1a40)'
+                : 'linear-gradient(135deg, #1e1b4b, #1a0e3e)',
+              color: chatOpen ? '#5da3ff' : '#a78bfa',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.2s',
+              boxShadow: chatOpen ? '0 0 12px rgba(124,58,237,0.3)' : undefined,
+            }}
+          >
+            💬 Agent
+            {chatOpen && (
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: '#5da3ff', display: 'inline-block',
+                animation: 'agent-dot-pulse 1.2s infinite',
+              }} />
+            )}
+          </button>
+          <style>{`@keyframes agent-dot-pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
+
           {/* 核心创作入口 */}
           <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="NL 描述 → 自动组装 ComfyUI 工作流" />
           <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="多分镜规划、资产绑定与批量生成" />
@@ -345,6 +426,41 @@ export function App() {
                     minWidth: 160,
                   }}
                 >
+                  <div style={{
+                    padding: '6px 12px', fontSize: 11, color: '#8899aa',
+                    borderBottom: `1px solid ${theme.border.subtle}`,
+                  }}>项目完整导出 (v5.4)</div>
+                  <button
+                    onClick={() => { exportProjectFull('json'); setExportMenuOpen(false); }}
+                    style={{
+                      display: 'block', width: '100%', padding: '10px 16px',
+                      background: 'transparent', border: 'none',
+                      color: theme.text.primary, cursor: 'pointer',
+                      fontSize: 13, textAlign: 'left',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg.hover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    完整项目 JSON
+                  </button>
+                  <button
+                    onClick={() => exportProjectFull('zip')}
+                    style={{
+                      display: 'block', width: '100%', padding: '10px 16px',
+                      background: 'transparent', border: 'none',
+                      color: theme.text.primary, cursor: 'pointer',
+                      fontSize: 13, textAlign: 'left',
+                      borderBottom: `1px solid ${theme.border.subtle}`,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg.hover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    完整项目 ZIP (±媒体)
+                  </button>
+                  <div style={{
+                    padding: '6px 12px', fontSize: 11, color: '#8899aa',
+                    borderBottom: `1px solid ${theme.border.subtle}`,
+                  }}>画布存档</div>
                   <button
                     onClick={() => { exportJSON(); setExportMenuOpen(false); }}
                     style={{
@@ -357,7 +473,7 @@ export function App() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg.hover)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    导出 JSON 存档
+                    画布 JSON 存档
                   </button>
                   <button
                     onClick={exportZIP}
@@ -457,6 +573,9 @@ export function App() {
 
       {/* v4.57 故事板时间轴 */}
       {storyboardTimelineOpen && <StoryboardTimeline />}
+
+      {/* v5.3 Agent 对话面板 */}
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 # 无限画布 · 一键启动（Windows PowerShell）
-# 用法：  ./start.ps1        启动后端(8000) + 前端 dev(5173)
+# 用法：  ./start.ps1        启动后端(5180) + 前端 dev(5173)
 #         ./start.ps1 -Prod  启动后端 + 前端预览(4173, 需先 npm run build)
 param(
     [switch]$Prod
@@ -17,10 +17,10 @@ if (-not (Test-Path $py)) {
     exit 1
 }
 
-# 1) 后端 uvicorn（8000）
-Write-Host '[start] 启动后端 uvicorn :8000 ...' -ForegroundColor Cyan
+# 1) 后端 uvicorn（5180）
+Write-Host '[start] 启动后端 uvicorn :5180 ...' -ForegroundColor Cyan
 Start-Process -FilePath $py `
-    -ArgumentList '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000' `
+    -ArgumentList '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '5180' `
     -WorkingDirectory $agent `
     -RedirectStandardOutput (Join-Path $agent 'uvicorn.out.log') `
     -RedirectStandardError (Join-Path $agent 'uvicorn.err.log')
@@ -40,4 +40,4 @@ if ($Prod) {
 
 Start-Sleep -Seconds 4
 Write-Host "[start] 就绪。请访问 $url" -ForegroundColor Green
-Write-Host '[start] 后端健康检查： http://127.0.0.1:8000/health'
+Write-Host '[start] 后端健康检查： http://127.0.0.1:5180/health'

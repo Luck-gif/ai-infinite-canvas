@@ -504,6 +504,9 @@ export function ControlPanel() {
           const dw = DISPLAY_W;
           const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
           let placed = 0;
+          const existingCount = useCanvasStore.getState().nodes.length;
+          const baseX = 60 + (existingCount > 0 ? 320 : 0);
+          const baseY = 60 + (existingCount > 0 ? existingCount * 18 : 0);
           for (let i = 0; i < res.frames.length; i++) {
             const frame = res.frames[i];
             if (!frame.image) continue;
@@ -514,8 +517,8 @@ export function ControlPanel() {
               filename: frame.image,
               prompt: frame.prompt,
               templateId: 'storyboard_sdxl',
-              x: 60 + col * (dw + 40),
-              y: 60 + row * (dh + 70),
+              x: baseX + col * (dw + 40),
+              y: baseY + row * (dh + 70),
               width: dw,
               height: dh,
               mode: 'storyboard',
@@ -525,8 +528,8 @@ export function ControlPanel() {
             });
             placed++;
           }
-        } catch (e: any) {
-          setError(`分镜生成异常: ${e.message || e}`);
+        } catch (e: unknown) {
+          setError(`分镜生成异常: ${(e as Error)?.message || String(e)}`);
           setLoading(false);
           setPhase('');
         }

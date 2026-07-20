@@ -60,6 +60,14 @@ export function defaultPortsForKind(kind: NodeKind): NodePort[] {
 
 // ── 基础类型（不变）───────────────────────────────────────────────
 
+/** 分镜镜头（LLM 解析后的单个镜头） */
+export interface StoryboardShot {
+  shot_id: string;
+  description: string;
+  action: string;
+  prompt: string;
+}
+
 /** §8.1.4 结构化意图 */
 export interface Intent {
   action: string;
@@ -76,6 +84,8 @@ export interface Intent {
     negative_prompt?: string;
     [k: string]: unknown;
   };
+  /** v5.3.1: storyboard 动作时 LLM 分解的分镜镜头（有英文 prompt） */
+  shots?: StoryboardShot[];
 }
 
 /** /api/intent 响应 */

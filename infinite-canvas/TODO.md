@@ -1,154 +1,250 @@
-# TODO.md — 无限画布 v5.3 终态
+# TODO.md — 无限画布 v5.4
 
-> 最后更新：2026-07-20 (v5.3 全部完成)
+> 最后更新：2026-07-20（v5.4 Step 1 模板引擎完成 ✅ | Step 2 等待模型下载 | v5.4.1 代码审查+修复完成）
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
-> 🎉 P0/P1/P2 全部交付，258 pytest + 40 vitest 全绿，tsc 0 error
+> 权威依据：[执行标准 v5.4](../1.技术开发方案执行标准.md)
 
 ---
 
-## ✅ P0 — v4.50 后端增强（已完成）
+## ✅ v5.1 — 交互层打磨（已完成，2026-07-20）
 
-- [x] **#1 创建 `entity_registry.py`** — 角色/场景/道具/风格结构化注册表（JSON Schema）✅ 2026-07-20
-- [x] **#2 新增 `/api/entities/*` CRUD** — 创建/读取/更新/删除实体 ✅ 2026-07-20
-- [x] **#3 创建 `consistency_manager.py`** — StoryDiffusion 17 合 1 封装，按场景路由 ✅ 2026-07-20
-- [x] **#4 创建 `workflow_planner.py`** — LLM 辅助工作流规划（蓝图匹配+DAG构造）✅ 2026-07-20
-- [x] **#5 创建 `workflow_assembler.py`** — 蓝图参数填入+一致性策略自动注入+量化匹配 ✅ 2026-07-20
-- [x] **#6 新增 `/api/workflows/generate` + `/api/storyboard/plan` + `/api/blueprints`** — 三个新端点 ✅ 2026-07-20
-- [x] **#7 创建 `video_blueprints.py`** — Wan2.2 T2V/I2V (fp8/GGUF) + LTX 蓝图封装 ✅ 2026-07-20
-- [x] **#7a 创建 `pipeline_orchestrator.py`** — 7-Agent 管线编排器（意图→蓝图→一致性→组装→校验→提交）✅ 2026-07-20
-- [x] **#7b 前端面板集成** — WorkflowGeneratePanel + StoryboardPanel + 工具栏 ✅ 2026-07-20
-- [x] **#7c 三层画布底层** — CanvasLayer 类型 + LayerPanel 切换组件 + Store 集成 ✅ 2026-07-20
-- [x] **#7d API 扩展** — `/api/pipeline/run` + `/api/pipeline/storyboard` 管线端点 ✅ 2026-07-20
-- [x] **#7e E2E 测试补齐** — 9 个管线端到端测试 (165 tests total) ✅ 2026-07-20
+> 涉及文件：`Canvas.tsx` `store.ts` `ControlPanel.tsx` `App.tsx` `types.ts` `graph.ts`
+> 代码变更：+352 / -32，零 lint 错误
 
-✅ **v4.50 全面完成！** 后端 + 前端面板 + 三层画布 + PipelineOrchestrator + 165 测试全绿。
+### Phase 1: 端口可视化 + Port-to-Port 连线
+- [x] Canvas.tsx：端口圆点渲染（输入左侧/输出右侧），类型颜色区分
+- [x] 拖拽端口创建 PortEdge，多端口最近匹配
+- [x] store.ts：portEdges 状态 + addPortEdge/removePortEdge + serialize/deserialize + undo/redo
+- [x] graph.ts：computePortEdges() 贝塞尔曲线连线
 
-## ✅ P1 — v5.0 前端三层画布（全部完成！）
+### Phase 2: 文本节点特殊渲染
+- [x] Canvas.tsx：文本卡片样式，内容预览（180字），图标标签
+- [x] 文本节点跳过位图加载
 
-- [x] **#8 ControlPanel.tsx 拆分** — 层级上下文提示条 + SegBtn 层级色彩标记 (v4.51) ✅
-- [x] **#9 Canvas.tsx 重构** — 三种视图模式切换：节点过滤 + 层级统计栏 (v4.55) ✅
-- [x] **#10 项目画布** — EntityBrowserPanel + 实体加载到策划层 + 描述字段 (v4.56) ✅
-- [x] **#11 故事板画布** — 分镜编排 + 时间轴(拖拽排序) + 资产引用(实体绑定) + 批量生成 + Canvas 联动 (v4.57-v4.59) ✅
-- [x] **#12 工作流画布** — 只读→可编辑：NodeEditPanel 参数编辑/重新生成/管线提交 (v4.54) ✅
-- [x] **#13 types.ts + store.ts + api.ts 扩展** — 实体类型/层级映射/CanvasNode扩展 (v4.54-v4.56) ✅
-- [x] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）(v4.53) ✅
+### Phase 3: 首尾帧上传通道
+- [x] ControlPanel.tsx：img2vid 模式尾帧上传区 + 预览 + end_image 传参
+- [x] generate/previewWorkflow 均支持 end_image
 
-## ✅ P2 — v5.3 发布前增强（全部完成！）
+### Phase 4: 音频节点渲染（前端 only）
+- [x] Canvas.tsx：波形占位线条 + 音频标签
+- [x] 控制面板：🎵 添加音频 按钮
 
-- [x] **#15 LightX2V + SageAttention** 视频加速管线 ✅ 2026-07-20
-- [x] **#16 多角色同框** Regional Pipeline ✅ 2026-07-20
-  - `regional_pipeline.py` — Regional Sampler + 多 IPAdapter + 注意力掩码
-  - 4种布局：水平2分/垂直2分/2×2四宫格/自由比例
-  - [A]/[B] token 提示词解析 + 区域坐标计算
-  - `/api/regional/generate` 端点 + GenerateRequest 模型
-  - `intent_map.py` regional action + _build_regional 路径
-  - 前端 GenMode 新增 'regional' + RegionalCharacterSlot 接口
-  - 19 个新 pytest
-- [x] **#17 一致性自动审查** — CLIP embedding 跨节点对比 ✅ 2026-07-20
-  - `embedding_service.py` — CLIP ViT-L/14 嵌入提取 + 余弦相似度
-  - `cross_node_consistency()` + `batch_consistency_summary()` + grade(A/B/C/D)
-  - `/api/review/consistency` 端点：批量节点相似度审查
-  - 阈值 0.75 通过，按 face/style/scene 分类统计
-- [x] **#18 IP 相似度预警** — 角色嵌入库+阈值检测 ✅ 2026-07-20
-  - `store_entity_embedding()` / `get_entity_embedding()` 嵌入索引持久化
-  - `check_ip_similarity()` 三级预警（通过/轻度偏离/严重偏离）
-  - `/api/guard/ip-check` + `/api/guard/ip-register` + `/api/guard/ip-library` 端点
-  - 21 个新 pytest（含嵌入提取/一致性审查/IP预警）
-- [x] **#19 基础审核** — 节点质量标记 + 批量浏览 ✅ 2026-07-20
-  - `NodeQualityStatus`: unreviewed | approved | rejected | needs_regeneration
-  - `/api/review/quality` 单节点标记 + `/api/review/batch-quality` 批量标记
-  - `/api/review/quality-stats` 审核统计端点
-  - CanvasNode → qualityStatus/qualityNote 字段
-  - store → qualityFilter 过滤器 + markNodeQuality/batchMarkQuality
-  - App.tsx: 顶部工具栏审核状态下拉过滤
-  - NodeEditPanel: 审核快捷按钮（✅通过/❌驳回/🔄重生成）
+### Phase 5: 工作流执行 UI
+- [x] App.tsx 工具栏：▶ 执行 按钮，POST /api/workflow/execute-chain
+
+### Phase 6: 交互打磨
+- [x] 端口连线 hover 高亮（金色醒目）
+- [x] 右键上下文菜单：删除节点 / 断开端口连线
+- [x] CtxMenuItem 组件
 
 ---
 
-## 📋 v4.56 当前能力清单
+## 🔴 P0 — v5.2 补齐后端引擎（已完成 2026-07-20）
 
-### API (27 endpoints)
-```
-POST /api/intent              意图解析（DeepSeek v4）
-POST /api/generate            文生图/图生图/重绘/扩图
-POST /api/video               文生视频/图生视频
-POST /api/consistency         一致性生成（4 模式）
-POST /api/storyboard          分镜并行生成
-POST /api/workflow/*          工作流 CRUD
-GET  /api/workflows           工作流列表
-POST /api/workflows/generate  NL→工作流自动组装
-POST /api/storyboard/plan     分镜规划
-GET  /api/blueprints          蓝图库查询
-POST /api/pipeline/run        多Agent管线执行
-POST /api/pipeline/storyboard 故事板管线
-POST /api/entities/*          实体注册表 CRUD
-GET  /api/entities            实体列表（按kind过滤）
-GET  /api/entities/search     实体搜索
-GET  /api/entities/{id}/prompt 实体提示词
-POST /api/text/produce        多Agent写作管线
-GET  /api/progress/{id}       实时进度
-POST /api/export/zip          ZIP 导出
-GET  /api/env                 环境诊断
-GET  /api/health              健康检查
-```
+> **核心理由**：v5.1 前端交互已完成，v5.2 补齐后端四大缺口：模型统一、WorkflowExecutor、音频蓝图、端口CRUD。
 
-### 测试
-```
-258 pytest — 全绿
-TypeScript: tsc 0 error
-```
+### 1. 模型选型统一（双轨清理）
 
-### 进度
-```
-P0: 6/6 ✅  P1: 7/7 ✅  P2: 5/5 ✅  🎉
-总版本: v5.3 · P0/P1/P2 全部完成！
-```
+- [x] **#20 统一 Wan2.2 Bernini 引用** — 已完成（双轨已统一，video_blueprints.py 从 comfy_client.py 导入所有 Bernini 模型常量）
+  - `video_blueprints.py` → 从 `comfy_client.py` 导入 `VIDEO_T2V_HIGH/LOW, VIDEO_I2V_HIGH/LOW, VIDEO_CLIP, VIDEO_VAE`
+  - `comfy_client.py` → 全部使用 Bernini (`wan2.2_bernini_r_*`, `wan2.2_i2v_*_14B_*`)
+  - ✅ **无需修改，双轨已自然统一**
 
-### 新增模块（v4.50-v5.1）
-```
-pipeline_orchestrator.py   — 7-Agent管线编排器
-workflow_assembler.py      — 蓝图组装引擎
-video_blueprints.py        — 视频蓝图库 (+ LightX2V 集成)
-consistency_manager.py     — 一致性策略路由
-entity_registry.py         — 实体注册表
-text_production.py         — 多Agent写作管线
-lightx2v_blueprints.py     — LightX2V 4步/2步蒸馏蓝图 (v5.0)
-sage_attention.py          — SageAttention 量化加速配置 (v5.0)
-regional_pipeline.py       — 多角色同框 Regional Sampler (v5.1)
-embedding_service.py        — CLIP 嵌入服务 + 一致性审查 + IP 预警 (v5.2)
-+ 审核 API 端点             — quality/batch-quality/quality-stats (v5.3)
-+ 质量过滤 UI               — App.tsx 下拉 + NodeEditPanel 标记 (v5.3)
-LayerPanel.tsx              — 三层画布切换
-WorkflowGeneratePanel.tsx   — NL→工作流生成面板
-StoryboardPanel.tsx         — 分镜规划面板
-NodeEditPanel.tsx           — 节点属性编辑（重新生成/管线提交/预览）
-EntityBrowserPanel.tsx      — 实体浏览与画布加载
-StoryboardTimeline.tsx      — 故事板时间轴（拖拽排序+资产绑定+批量生成）
-```
+### 2. WorkflowExecutor 拓扑执行引擎
+
+- [x] **#21 `workflow_executor.py`** — 已存在且完整
+  - ✅ `WorkflowExecutor` 类，topological_sort BFS 拓扑排序
+  - ✅ `_build_workflow()` 覆盖 9 种 NodeKind（含 v5.2 新增的音频蓝图调用）
+  - ✅ `_execute_one()` 单节点提交 + WebSocket 进度 + 结果回写
+  - ✅ `main.py` 已接入 `POST /api/workflow/execute-chain` 路由
+  - ✅ 音频节点集成：`_build_workflow` 调用 `audio_blueprints.build_audio_workflow()`
+
+### 3. 音频后端 TTS 蓝图
+
+- [x] **#22 `audio_blueprints.py`** — 从占位升级为真实 ComfyUI 工作流
+  - ✅ `cosyvoice_tts_workflow()` → `CosyVoiceLoader → CosyVoiceTTS → SaveAudio`
+  - ✅ `musicgen_workflow()` → `MusicGenLoader → MusicGenGenerate → SaveAudio`
+  - ✅ `stable_audio_workflow()` → `StableAudioLoader → StableAudioGenerate → SaveAudio`
+  - ✅ `build_audio_workflow()` 统一入口 + 蓝图注册表
+
+### 4. 端口连线后端 CRUD
+
+- [x] **#23 端口连线 JSON 持久化** — 后端端点已实现
+  - ✅ `POST /api/port-edges` 批量保存（覆盖模式）
+  - ✅ `GET /api/port-edges` 获取全部
+  - ✅ `DELETE /api/port-edges/{id}` 删除单条
+  - ✅ `DELETE /api/port-edges` 清空全部
+  - ✅ `POST /api/audio/generate` TTS 端点
+  - ✅ `POST /api/audio/music` 音乐生成端点
+  - ✅ 前端 `api.ts` 已添加对应函数：`savePortEdges`, `loadPortEdges`, `deletePortEdge`, `clearPortEdges`, `audioTTS`, `audioMusic`
+  - ✅ 存储位置：`agent/data/port_edges.json`
 
 ---
 
-## 📋 硬件升级后的验证清单
+## 🟡 P1 — v5.3 Agent 激活（基础完成，工作流路由待升级 2026-07-20）
 
-- [ ] 新 GPU 加载 → `python env_check.py` 全项通过
-- [ ] Wan2.2 fp8 → fp16 迁移（质量提升 15-25%）
-- [ ] Qwen-Image 2.0 加载更大变体
-- [ ] 全量回归：`pytest tests/ -q` + `npx vitest run` + `npx tsc --noEmit`
-- [ ] E2E 全链路：`pytest tests/e2e/test_pipeline.py -q`
+> **核心理由**：Agent CLI + MCP Server 是"开放生态"的关键——让外部工具（Cursor、Claude、GPT）直接操控无限画布。
+
+### 5. Agent CLI (`ic` 命令行)
+
+- [x] **#24 `agent_cli.py`** — 6 个子命令，纯标准库，零依赖 ✅
+
+### 6. MCP Server（外部 Agent 工具）
+
+- [x] **#25 `mcp_server.py`** — JSON-RPC 2.0 over stdio，10 个工具 ✅
+
+### 7. Skill Pack（项目 Agent 技能包）
+
+- [x] **#26 技能包文档** — CodeBuddy 可安装 Skill ✅
+
+### ⚠️ v5.3.3 补丁：ChatPanel 工作流路由修复（2026-07-20）
+
+> **发现 Agent 无法正确路由到不同工作流（img2vid 降级 txt2img、batch_size 不传）**
+
+- [x] **IntentResponse 新增 shots 字段**：`main.py` + `types.ts` → LLM 分镜 prompt 不再被丢弃
+- [x] **ChatPanel action 路由**：根据 `intent.action` 路由到不同工作流参数（img2vid/txt2vid/img2img/…）
+- [x] **batch_size 传递**：`params.count` → `batch_size`，"需要5张"真的生成5张
+- [x] **input_image 自动获取**：needsInput 动作从画布已选节点获取底图
+- [x] **lint 零错误**：全部修改文件通过 tsc / pylint 检查
+- [x] **Bug 记录**：`4.漏洞及问题记录/v5.3-Agent工作流路由Bug分析.md`
+
+### 🔴 P0 — v5.4 Agent 工作流模板移植（Step 1 已完成 ✅，Step 2 等待模型）
+
+> **2026-07-20 已完成 Step 1（9 模板引擎集成），Step 2 需下载 32GB 模型。**
+
+#### 背景
+
+当前 `comfy_client.py` 只有硬编码的 `build_txt2img()` 一种节点图。Agent 解析出 `action: "img2vid"` 后后端没有对应模板。调研了开源 `comfyui-workflow-skill`（LingyiChen-AI，330⭐），有 **34 模板 + 360 节点定义**。
+
+#### 可行性分析结论（已做完）
+
+| 项目 | 结论 |
+|:---|:---|
+| 360 节点 | 是节点定义文档，非安装项。我们有 **2257** 个已注册节点，远超 360 |
+| 34 模板匹配 | **9 个可直接使用**（SDXL 5 + WAN2.2 I2V 4），覆盖用户 80% 日常需求 |
+| 最大缺口 | WAN2.2 T2V 文生视频模型（32GB）未下载，当前只有 I2V |
+| 移植方式 | 从"Python 函数硬编码"改为"加载 JSON 模板 → 修改参数 → POST" |
+
+#### Step 1：移植 9 个可用模板到 `comfy_client.py`（已完成 2026-07-20）
+
+- [x] 从 `comfyui-workflow-skill` 拉取 9 个 SDXL + WAN I2V 模板 JSON
+- [x] 添加 `agent/templates/` 目录存放 JSON 模板文件
+- [x] 改造 `comfy_client.py`：`TEMPLATE_REGISTRY` 注册表 + `_ui_to_api_format()` 转换 + `_inject_params()` 参数注入 + `apply_template()` 统一入口
+- [x] `build_txt2img()` 优先使用模板引擎，回退到硬编码
+- [x] 9 个可用模板：sdxl-txt2img, sdxl-img2img, sdxl-inpaint, sdxl-lora, sdxl-controlnet, wan22-img2vid, wan22-camera, wan22-first-last, wan22-fun-control
+
+#### Step 2：下载 WAN2.2 T2V 模型补 txt2vid 缺口（⏳ 等待 32GB 下载）
+
+- [ ] 下载 WAN2.2 Bernini T2V 高噪模型 `wan2.2_bernini_r_high_noise_mxfp8.safetensors` (~14GB)
+- [ ] 下载 WAN2.2 Bernini T2V 低噪模型 `wan2.2_bernini_r_low_noise_mxfp8.safetensors` (~14GB)
+- [ ] unlock wan22-txt2vid 模板 → `TEMPLATE_REGISTRY` 注册
+- [ ] 下载 IPAdapter SD15 模型 `ip-adapter-plus_sd15.safetensors` 到 `models/ipadapter/`
+
+> 📋 模型下载地址: `https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI` (T2V) + `https://huggingface.co/h94/IP-Adapter` (SD15)
+
+#### 对照表（模板 vs 模型匹配）
+
+| 模板 | 所需模型 | 状态 |
+|:---|:---|:--:|
+| sdxl-txt2img / img2img / inpaint | SDXL (NoobAI-XL) | ✅ |
+| sdxl-lora / controlnet | SDXL + LoRA/ControlNet | ⚠️ 需补文件 |
+| wan22-img2vid / camera / first-last / fun-control | WAN2.2 I2V 14B | ✅ |
+| wan22-txt2vid | WAN2.2 T2V Bernini | ❌ 32GB |
+| flux-* / sd15-* / sd3-* / hunyuan-* / cosmos-* / mochi-* (22个) | 各项模型 | ❌ 暂不需要 |
 
 ---
 
-## ✅ 已完成（v4.43 之前）
+## 🟢 P2 — v5.4 发布准备（长期）
 
-- [x] 12 种 action 全覆盖意图解析
-- [x] IPAdapter 四类一致性（角色/风格/场景/道具）
-- [x] 文生视频 + 图生视频（Wan2.2）
-- [x] 分镜编排 + 时间轴 + 视频拼接
-- [x] ZIP 导出 + 视口裁剪 + 懒加载
-- [x] 工作流库 CRUD + LLM 辅助创建
-- [x] env_check.py 环境自诊断
-- [x] 项目文件清理（临时文件/日志/冗余代码）
-- [x] 模型选型锁定
-- [x] v5.0 执行标准制定
-- [x] 被误删文件恢复（git checkout HEAD）
-- [x] 调研报告归档（分析调研目录）
+> **核心理由**：视频加速和同框优化是性能/质量提升项，不阻塞功能可用性。
+
+### 8. LightX2V + SageAttention 视频加速
+
+- [x] **#27 LightX2V 4步蒸馏接入** ✅
+  - 蓝图：`lightx2v_blueprints.py`（集成进 video_blueprints 统一调度）
+  - 端点：新增 `GET /api/lightx2v/status` 自动检测 LightX2V / SageAttention 可用性
+  - VRAM 自动选择：<20GB → GGUF Q5 变体，≥20GB → fp8 变体
+  - build_txt2vid / build_img2vid 现已正确转发 fps / filename_prefix 参数
+  - 新增 15 个 `test_video_blueprints.py` 单元测试
+
+### 9. 多角色同框 Pipeline 完善
+
+- [x] **#28 优化 `regional_pipeline.py`** — 角色间一致性增强 ✅
+  - **修复关键Bug**: 多 IPAdapter 输出链式连接到 RegionalSampler（>1字符时不再为pass空操作）
+  - 2+ 角色时 IPAdapter 串行连接：checkpoint → IPA1 → IPA2 → ... → sampler
+
+### 10. 项目导出/发布管线
+
+- [x] **#29 ZIP 导出增强** — 完整项目导入导出 ✅
+  - 后端 `POST /api/export_project` + `POST /api/import_project` 端点
+  - 前端 `exportProject()` + `importProject()` 函数
+  - App.tsx 导出菜单新增「完整项目 JSON」和「完整项目 ZIP」选项
+  - 导入自动识别项目格式（meta.canvas）vs 旧版画布存档
+  - 预估：**0.5 天** — 已完成
+
+---
+
+## 🔮 待评估（需硬件/调研后决定）
+
+- [ ] #30 相机运动参数 — GenParams 增加 movement/camera 字段
+- [ ] #31 多角度支持 — 角色三视图 + 全景 720°
+- [ ] #32 光照控制 — ControlNet Lighting + 参数面板
+- [ ] #33 故事板引导式工作流 — 模仿「1人漫剧」步骤引导
+- [ ] #34 跨层 @引用机制 — 模仿 LibTV @引用（三层画布互操作）
+
+---
+
+## 📊 进度总结
+
+```
+v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
+ 基础     后端     架构   交互   引擎补齐  Agent   补丁      模板移植+导出 ✅
+```
+
+| 优先级 | 任务数 | 预估天数 | 状态 |
+|--------|:-----:|:------:|:----:|
+| ✅ 已完成 | 15 (v5.1 + v5.2 + v5.3 + v5.3.3 + v5.4 P2) | 11 天 | 100% |
+| 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型下载） | 等待 | 约28GB |
+| 🟢 P2 | 0 (全部完成) | 0 天 | 100% |
+| 🔧 v5.4.1 | 代码审查+修复（api前缀/模板引擎/typecheck） | 已完成 | ✅ |
+
+### 🔀 v5.4.1 代码审查+修复 (2026-07-20 已完成)
+
+> 项目全面审查 + 自主迭代修复
+
+| 修复项 | 文件 | 说明 |
+|:---|:---|:---|
+| 🔴 API 双前缀 | `frontend/src/api.ts` | 7端点 `/api/api/xxx` → `/api/xxx` |
+| 🟡 模板引擎验证 | `agent/comfy_client.py` | 9模板全通过 `_ui_to_api_format()` |
+| 🟡 错误处理升级 | `agent/comfy_client.py` | 3处 try/except → `logging.warning` + traceback |
+| 🟢 typecheck | `frontend/package.json` | 添加 `"typecheck": "tsc --noEmit"` |
+
+### 📋 当前 Git 待提交
+
+```bash
+# Git 未提交变更（29 modified + 6 untracked）
+git status --porcelain
+
+# 涵盖全部迭代文件：前后端 + 文档 + 模板 + Agent + 技能包
+```
+
+### 🔜 v5.5 迭代方向
+
+1. **模型补全**: 下载 WAN2.2 T2V (28GB) + IPAdapter SD15 → 解锁 txt2vid + 一致性增强
+2. **nvidia-smi 诊断**: 修复 GPU 状态查询，GPU/VRAM 监控恢复
+3. **urllib3 版本警告**: 锁定 requests/urllib3 兼容版本
+4. **测试补齐**: pytest 覆盖率审查 + 前端集成测试增强
+
+---
+
+## 🔍 验收标准（每个任务完成后）
+
+- [ ] pytest 全通过（当前 258，N 新增 ≤ 258+N）
+- [ ] tsc 0 error
+- [ ] vitest 全通过
+- [ ] env_check.py 不退化
+- [ ] 有对应测试（单元 + 集成）
+- [ ] 本标准已更新
+
+> **v5.2 优先级顺序**：#20（模型统一）→ #21（WorkflowExecutor）→ #22（音频蓝图）→ #23（端口 CRUD）
+> 详细设计见 [执行标准 §11-§12](../1.技术开发方案执行标准.md#十一端口系统设计v51-已完成)

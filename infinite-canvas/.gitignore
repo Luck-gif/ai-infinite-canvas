@@ -25,7 +25,8 @@ e2e_*.png
 chain_result.txt
 _check_out.txt
 
-# ComfyUI 运行时数据
+# 生成输出（不可提交）
+agent/outputs/
 agent/comfy_output/
 agent/templates/user/
 

@@ -496,7 +496,7 @@ const thumbBox: React.CSSProperties = {
 const promptBox: React.CSSProperties = {
   fontSize: 10, color: theme.text.primary, lineHeight: 1.4,
   overflow: 'hidden', display: '-webkit-box',
-  WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, flex: 1,
+  WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as React.CSSProperties['WebkitBoxOrient'], flex: 1,
 };
 
 const cardFooter: React.CSSProperties = {

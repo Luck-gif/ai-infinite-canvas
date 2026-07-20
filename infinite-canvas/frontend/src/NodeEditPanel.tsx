@@ -136,8 +136,8 @@ export function NodeEditPanel() {
         createdAt: Date.now(),
       });
       toastChannel.push('success', '节点已重新生成');
-    } catch (e: any) {
-      toastChannel.push('error', `生成失败: ${e.message}`);
+    } catch (e: unknown) {
+      toastChannel.push('error', `生成失败: ${(e as Error)?.message || String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -158,8 +158,8 @@ export function NodeEditPanel() {
       } else {
         toastChannel.push('info', `验证通过但未提交: ${resp.issues.join('; ') || '无问题'}`);
       }
-    } catch (e: any) {
-      toastChannel.push('error', `管线执行失败: ${e.message}`);
+    } catch (e: unknown) {
+      toastChannel.push('error', `管线执行失败: ${(e as Error)?.message || String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -176,8 +176,8 @@ export function NodeEditPanel() {
       setPreviewJson(JSON.stringify(resp.workflow, null, 2));
       setLiveWorkflow(resp.workflow as unknown as WorkflowGraph);
       setWfOpen(true);
-    } catch (e: any) {
-      toastChannel.push('error', `预览失败: ${e.message}`);
+    } catch (e: unknown) {
+      toastChannel.push('error', `预览失败: ${(e as Error)?.message || String(e)}`);
     }
   };
 
