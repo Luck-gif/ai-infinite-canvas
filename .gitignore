@@ -73,6 +73,8 @@ infinite-canvas/agent/agent_api_test.log
 
 # ── Playwright CLI 运行时 ──
 .playwright-cli/
+playwright-report/
+test-results/
 
 # ── Qwen 本地配置 ──
 .qwen/
