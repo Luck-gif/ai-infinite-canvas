@@ -537,8 +537,11 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
     </div>
   ) : null;
 
-  // 渲染 Markdown 简单文本
+  // 简单 Markdown 文本（安全渲染，避免用户注入 HTML）
   const textHtml = msg.text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br/>');
 

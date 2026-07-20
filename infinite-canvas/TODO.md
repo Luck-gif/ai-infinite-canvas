@@ -1,8 +1,8 @@
-# TODO.md — 无限画布 v5.4
+# TODO.md — 无限画布 v5.5
 
-> 最后更新：2026-07-20（v5.4 Step 1 模板引擎完成 ✅ | Step 2 等待模型下载 | v5.4.1 代码审查+修复完成）
+> 最后更新：2026-07-20（v5.5 迭代推进中：环境修复 + 测试补齐 + 前端优化已完成 ✅ | 模型下载待手动操作）
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
-> 权威依据：[执行标准 v5.4](../1.技术开发方案执行标准.md)
+> 权威依据：[执行标准 v5.5](../1.技术开发方案执行标准.md)
 
 ---
 
@@ -203,37 +203,27 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 
 | 优先级 | 任务数 | 预估天数 | 状态 |
 |--------|:-----:|:------:|:----:|
-| ✅ 已完成 | 15 (v5.1 + v5.2 + v5.3 + v5.3.3 + v5.4 P2) | 11 天 | 100% |
+| ✅ 已完成 | 所有工程项 | 11+ 天 | 100% |
 | 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型下载） | 等待 | 约28GB |
-| 🟢 P2 | 0 (全部完成) | 0 天 | 100% |
-| 🔧 v5.4.1 | 代码审查+修复（api前缀/模板引擎/typecheck） | 已完成 | ✅ |
+| 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 | 已完成 | ✅ |
 
-### 🔀 v5.4.1 代码审查+修复 (2026-07-20 已完成)
+### ✅ v5.5 自主迭代 (2026-07-20 完成)
 
-> 项目全面审查 + 自主迭代修复
-
-| 修复项 | 文件 | 说明 |
+| 类别 | 内容 | 结果 |
 |:---|:---|:---|
-| 🔴 API 双前缀 | `frontend/src/api.ts` | 7端点 `/api/api/xxx` → `/api/xxx` |
-| 🟡 模板引擎验证 | `agent/comfy_client.py` | 9模板全通过 `_ui_to_api_format()` |
-| 🟡 错误处理升级 | `agent/comfy_client.py` | 3处 try/except → `logging.warning` + traceback |
-| 🟢 typecheck | `frontend/package.json` | 添加 `"typecheck": "tsc --noEmit"` |
+| 🔧 nvidia-smi 修复 | `env_check.py` 无效标志→正确探测 | RTX 5080 16GB 正确识别 |
+| 🔧 VRAM 阈值 | >=16→>=15 适配 5080 类卡片 | 诊断准确 |
+| 🔧 urllib3 警告 | pyproject.toml filterwarnings | pytest 输出清净 |
+| 📝 测试补齐 | entity_registry(27) + intent_map(22) + template_engine(15) | 287→330 (+43) |
+| 🛡️ XSS 修复 | ChatPanel HTML 实体转义预防注入 | 安全提升 |
+| ♻️ 代码重构 | StoryboardTimeline 批量生成去重 | -35行, 0回归 |
+| 📝 文档同步 | TODO.md + 执行标准 + 迭代记录 | 反映 v5.5 状态 |
 
-### 📋 当前 Git 待提交
+### 🔜 v5.5 剩余 (需手动操作)
 
-```bash
-# Git 未提交变更（29 modified + 6 untracked）
-git status --porcelain
-
-# 涵盖全部迭代文件：前后端 + 文档 + 模板 + Agent + 技能包
-```
-
-### 🔜 v5.5 迭代方向
-
-1. **模型补全**: 下载 WAN2.2 T2V (28GB) + IPAdapter SD15 → 解锁 txt2vid + 一致性增强
-2. **nvidia-smi 诊断**: 修复 GPU 状态查询，GPU/VRAM 监控恢复
-3. **urllib3 版本警告**: 锁定 requests/urllib3 兼容版本
-4. **测试补齐**: pytest 覆盖率审查 + 前端集成测试增强
+1. **模型下载**: WAN2.2 T2V (~28GB) + IPAdapter SD15 (~380MB) — HuggingFace
+2. 下载后: unlock wan22-txt2vid 模板 + TEMPLATE_REGISTRY 注册
+3. **前端 E2E**: playwright 集成测试 (当前仅单元测试 40/40)
 
 ---
 

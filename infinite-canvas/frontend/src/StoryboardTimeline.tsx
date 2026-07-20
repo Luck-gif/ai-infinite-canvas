@@ -77,66 +77,22 @@ export default function StoryboardTimeline() {
     setErrorMsg(null);
   }, [syncStoryboardFromCanvas]);
 
-  const handleBatchGenerate = useCallback(async () => {
-    const shots = useCanvasStore.getState().storyboardShots;
-    if (shots.length === 0) {
-      setErrorMsg('请先同步画布分镜节点');
-      return;
-    }
-
-    const idleShots = shots.filter((s) => s.status === 'idle' || s.status === 'failed');
-    if (idleShots.length === 0) {
-      // Try regenerating all
-      const allShots = shots;
-      if (allShots.every((s) => s.status === 'done')) {
-        setErrorMsg('所有分镜已完成。已重新生成全部。');
-        allShots.forEach((s) => updateShotStatus(s.nodeId, 'pending'));
-        allShots.forEach((s) => updateShotStatus(s.nodeId, 'generating'));
-        // fall through to batch generate
-        try {
-          const prompts = allShots.map((s) => s.prompt);
-          const result = await batchGenerateStoryboard(
-            { prompts, width: 1024, height: 1024, steps: 20, cfg: 7.0, seed: Date.now() % 65536 },
-          );
-          result.frames.forEach((frame, i) => {
-            const shot = allShots[i];
-            if (shot) {
-              if (frame.status === 'done' && frame.image) {
-                updateShotStatus(shot.nodeId, 'done', frame.image);
-              } else {
-                updateShotStatus(shot.nodeId, 'failed');
-              }
-            }
-          });
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : '批量生成失败';
-          setErrorMsg(msg);
-          allShots.forEach((s) => updateShotStatus(s.nodeId, 'failed'));
-        } finally {
-          setStoryboardBatchBusy(false);
-          syncStoryboardFromCanvas();
-        }
-        return;
-      }
-      setErrorMsg('所有分镜已生成或正在生成中');
-      return;
-    }
-
+  /** 核心：执行一批分镜的生成请求 */
+  const _runBatchGenerate = useCallback(async (targetShots: typeof storyboardShots, seedBase: number) => {
     setStoryboardBatchBusy(true);
     setErrorMsg(null);
 
-    idleShots.forEach((s) => updateShotStatus(s.nodeId, 'pending'));
-    idleShots.forEach((s) => updateShotStatus(s.nodeId, 'generating'));
+    targetShots.forEach((s) => updateShotStatus(s.nodeId, 'pending'));
+    targetShots.forEach((s) => updateShotStatus(s.nodeId, 'generating'));
 
     try {
-      const prompts = idleShots.map((s) => s.prompt);
-
+      const prompts = targetShots.map((s) => s.prompt);
       const result = await batchGenerateStoryboard(
-        { prompts, width: 1024, height: 1024, steps: 20, cfg: 7.0, seed: 42 + idleShots[0].shotIndex },
+        { prompts, width: 1024, height: 1024, steps: 20, cfg: 7.0, seed: seedBase },
       );
 
       result.frames.forEach((frame, i) => {
-        const shot = idleShots[i];
+        const shot = targetShots[i];
         if (shot) {
           if (frame.status === 'done' && frame.image) {
             updateShotStatus(shot.nodeId, 'done', frame.image);
@@ -146,9 +102,8 @@ export default function StoryboardTimeline() {
         }
       });
 
-      // Any remaining pending/generating → failed
-      const updated = useCanvasStore.getState().storyboardShots;
-      updated.forEach((s) => {
+      // Mark any remaining pending/generating → failed
+      useCanvasStore.getState().storyboardShots.forEach((s) => {
         if (s.status === 'pending' || s.status === 'generating') {
           updateShotStatus(s.nodeId, 'failed');
         }
@@ -166,6 +121,28 @@ export default function StoryboardTimeline() {
       syncStoryboardFromCanvas();
     }
   }, [setStoryboardBatchBusy, updateShotStatus, syncStoryboardFromCanvas]);
+
+  const handleBatchGenerate = useCallback(async () => {
+    const shots = useCanvasStore.getState().storyboardShots;
+    if (shots.length === 0) {
+      setErrorMsg('请先同步画布分镜节点');
+      return;
+    }
+
+    const idleShots = shots.filter((s) => s.status === 'idle' || s.status === 'failed');
+    if (idleShots.length === 0) {
+      if (shots.every((s) => s.status === 'done')) {
+        // 全部已完成 → 重新生成所有
+        setErrorMsg('所有分镜已完成。已重新生成全部。');
+        await _runBatchGenerate(shots, Date.now() % 65536);
+      } else {
+        setErrorMsg('所有分镜已生成或正在生成中');
+      }
+      return;
+    }
+
+    await _runBatchGenerate(idleShots, 42 + idleShots[0].shotIndex);
+  }, [_runBatchGenerate]);
 
   // Drag handlers
   const handleDragStart = useCallback((index: number) => setDragIndex(index), []);
