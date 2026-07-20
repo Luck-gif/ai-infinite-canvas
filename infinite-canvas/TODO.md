@@ -1,6 +1,6 @@
 # TODO.md — 无限画布 v5.0 任务队列
 
-> 最后更新：2026-07-20
+> 最后更新：2026-07-20 (v4.50 二次迭代交付)
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 所有人请按优先级从上到下执行。
 
@@ -15,8 +15,13 @@
 - [x] **#5 创建 `workflow_assembler.py`** — 蓝图参数填入+一致性策略自动注入+量化匹配 ✅ 2026-07-20
 - [x] **#6 新增 `/api/workflows/generate` + `/api/storyboard/plan` + `/api/blueprints`** — 三个新端点 ✅ 2026-07-20
 - [x] **#7 创建 `video_blueprints.py`** — Wan2.2 T2V/I2V (fp8/GGUF) + LTX 蓝图封装 ✅ 2026-07-20
+- [x] **#7a 创建 `pipeline_orchestrator.py`** — 7-Agent 管线编排器（意图→蓝图→一致性→组装→校验→提交）✅ 2026-07-20
+- [x] **#7b 前端面板集成** — WorkflowGeneratePanel + StoryboardPanel + 工具栏 ✅ 2026-07-20
+- [x] **#7c 三层画布底层** — CanvasLayer 类型 + LayerPanel 切换组件 + Store 集成 ✅ 2026-07-20
+- [x] **#7d API 扩展** — `/api/pipeline/run` + `/api/pipeline/storyboard` 管线端点 ✅ 2026-07-20
+- [x] **#7e E2E 测试补齐** — 9 个管线端到端测试 (165 tests total) ✅ 2026-07-20
 
-✅ **v4.50 后端已完成！** 全部 7 项 P0 已交付（135 测试全绿）。
+✅ **v4.50 全面完成！** 后端 + 前端面板 + 三层画布 + PipelineOrchestrator + 165 测试全绿。
 
 ## 🟡 P1 — v5.0 前端三层画布（硬件升级后 3-5 天）
 
@@ -35,6 +40,49 @@
 - [ ] **#17 一致性自动审查** — CLIP embedding 跨节点对比
 - [ ] **#18 IP 相似度预警** — 角色嵌入库+阈值检测
 - [ ] **#19 基础审核** — 节点质量标记 + 批量浏览模式
+
+---
+
+## 📋 v4.50 当前能力清单
+
+### API (23 endpoints)
+```
+POST /api/intent              意图解析（DeepSeek v4）
+POST /api/generate            文生图/图生图/重绘/扩图
+POST /api/video               文生视频/图生视频
+POST /api/consistency         一致性生成（4 模式）
+POST /api/storyboard          分镜并行生成
+POST /api/workflow/*          工作流 CRUD
+GET  /api/workflows           工作流列表
+POST /api/workflows/generate  NL→工作流自动组装
+POST /api/storyboard/plan     分镜规划
+GET  /api/blueprints          蓝图库查询
+POST /api/pipeline/run        多Agent管线执行
+POST /api/pipeline/storyboard 故事板管线
+POST /api/entities/*          实体注册表 CRUD
+GET  /api/progress/{id}       实时进度
+POST /api/export/zip          ZIP 导出
+GET  /api/env                 环境诊断
+GET  /api/health              健康检查
+```
+
+### 测试
+```
+165 pytest (134 unit + 22 integration + 9 E2E) — 全绿
+TypeScript: tsc 0 error
+```
+
+### 新增模块（v4.50）
+```
+pipeline_orchestrator.py   — 7-Agent管线编排器
+workflow_assembler.py      — 蓝图组装引擎
+video_blueprints.py        — 视频蓝图库
+consistency_manager.py     — 一致性策略路由
+entity_registry.py         — 实体注册表
+LayerPanel.tsx              — 三层画布切换
+WorkflowGeneratePanel.tsx   — NL→工作流生成面板
+StoryboardPanel.tsx         — 分镜规划面板
+```
 
 ---
 
