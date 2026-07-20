@@ -247,3 +247,44 @@ export async function listBlueprints(): Promise<BlueprintListResponse> {
   if (!res.ok) throw new Error(`[${res.status}] blueprints`);
   return res.json() as Promise<BlueprintListResponse>;
 }
+
+// ── v4.50 Pipeline Orchestrator ────────────────────────────────────
+
+export interface PipelineRunRequest {
+  prompt: string;
+  image_blueprint?: string | null;
+  consistency_mode?: string | null;
+  width?: number | null;
+  height?: number | null;
+  steps?: number | null;
+  cfg?: number | null;
+  negative?: string | null;
+  submit?: boolean;
+}
+
+export interface PipelineRunResponse {
+  validated: boolean;
+  issues: string[];
+  node_count: number;
+  prompt_engineered: string;
+  consistency_mode: string;
+  intent: Record<string, unknown>;
+  blueprint: string;
+  blueprint_id: string;
+  submitted: boolean;
+  submit_error: string | null;
+  workflow_json: Record<string, unknown>;
+  workflow_graph: WorkflowGraph | null;
+  duration_ms: number;
+  pipeline_version: string;
+}
+
+/** v4.50 PipelineOrchestrator 完整多Agent管线执行 */
+export async function runPipeline(req: PipelineRunRequest): Promise<PipelineRunResponse> {
+  return postJSON<PipelineRunResponse>(`${BASE}/pipeline/run`, req);
+}
+
+/** v4.50 PipelineOrchestrator 故事板管线执行 */
+export async function runPipelineStoryboard(req: StoryboardPlanRequest): Promise<StoryboardPlanResponse> {
+  return postJSON<StoryboardPlanResponse>(`${BASE}/pipeline/storyboard`, req);
+}

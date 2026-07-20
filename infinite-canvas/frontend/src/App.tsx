@@ -8,6 +8,7 @@ import Timeline from './Timeline';
 import { WorkflowLibrary } from './WorkflowLibrary';
 import { WorkflowGeneratePanel } from './WorkflowGeneratePanel';
 import { StoryboardPanel } from './StoryboardPanel';
+import { LayerPanel } from './LayerPanel';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, getStatus } from './api';
@@ -363,6 +364,9 @@ export function App() {
           onClose={() => setStoryboardOpen(false)}
         />
       )}
+
+      {/* v4.50 三层画布面板 */}
+      <LayerPanel />
     </div>
   );
 }
@@ -411,7 +415,7 @@ function ToastLayer({ toasts }: { toasts: ToastItem[] }) {
     <div
       style={{
         position: 'fixed',
-        bottom: 16,
+        bottom: 68,
         right: 16,
         display: 'flex',
         flexDirection: 'column-reverse',

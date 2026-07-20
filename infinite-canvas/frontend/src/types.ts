@@ -359,3 +359,20 @@ export interface BlueprintListResponse {
   image: BlueprintItem[];
   video: BlueprintItem[];
 }
+
+// ── v4.50 三层画布 ──────────────────────────────────────────────
+
+/** 画布层级：策划 / 生成 / 输出 */
+export type CanvasLayerKind = 'planning' | 'generation' | 'output';
+
+/** 画布层级对象 */
+export interface CanvasLayer {
+  id: string;
+  kind: CanvasLayerKind;
+  name: string;
+  icon: string;
+  description: string;
+  visible: boolean;
+  locked: boolean;
+  order: number;
+}

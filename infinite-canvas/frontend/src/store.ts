@@ -1,6 +1,6 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
-import type { CanvasNode, Link, WorkflowGraph, TimelineClip } from './types';
+import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
@@ -127,7 +127,29 @@ interface CanvasState {
   reorderTimeline: (clips: TimelineClip[]) => void;
   /** 清空时间轴 */
   clearTimeline: () => void;
+
+  // ── v4.50 三层画布 ──────────────────────────────────────────
+  /** 当前激活的层级 */
+  activeLayer: CanvasLayerKind;
+  /** 全部层级定义 */
+  layers: CanvasLayer[];
+  /** 切换激活层级 */
+  setActiveLayer: (kind: CanvasLayerKind) => void;
+  /** 切换层级可见性 */
+  toggleLayerVisibility: (id: string) => void;
+  /** 切换层级锁定 */
+  toggleLayerLock: (id: string) => void;
 }
+
+/** v4.50 三层画布默认配置 */
+const DEFAULT_LAYERS: CanvasLayer[] = [
+  { id: 'layer-planning', kind: 'planning', name: '策划层', icon: '📋',
+    description: '概念图、参考素材、分镜草稿', visible: true, locked: false, order: 0 },
+  { id: 'layer-generation', kind: 'generation', name: '生成层', icon: '🎨',
+    description: 'AI 生成的图像与视频', visible: true, locked: false, order: 1 },
+  { id: 'layer-output', kind: 'output', name: '输出层', icon: '🎬',
+    description: '最终合成、导出结果', visible: true, locked: true, order: 2 },
+];
 
 function snapshot(
   set: (fn: (s: CanvasState) => Partial<CanvasState>) => void,
@@ -318,5 +340,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     reorderTimeline: (clips) => set({ timelineClips: clips }),
 
     clearTimeline: () => set({ timelineClips: [] }),
+
+    // ── v4.50 三层画布 ──────────────────────────────────────
+    activeLayer: 'generation',
+    layers: DEFAULT_LAYERS,
+
+    setActiveLayer: (kind) => set({ activeLayer: kind }),
+
+    toggleLayerVisibility: (id) => {
+      set((s) => ({
+        layers: s.layers.map((l) =>
+          l.id === id ? { ...l, visible: !l.visible } : l,
+        ),
+      }));
+    },
+
+    toggleLayerLock: (id) => {
+      set((s) => ({
+        layers: s.layers.map((l) =>
+          l.id === id ? { ...l, locked: !l.locked } : l,
+        ),
+      }));
+    },
   };
 });

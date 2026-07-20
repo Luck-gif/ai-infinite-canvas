@@ -364,6 +364,20 @@ class StoryboardPlanRequest(BaseModel):
     characters: list[str] = Field([], description="角色名称列表")
     blueprint: str = Field("txt2img_sdxl", description="图像蓝图 ID")
     video_blueprint: str | None = Field(None, description="视频蓝图 ID（可选）")
+    consistency_mode: str | None = Field("auto", description="一致性模式: auto/face_consistency/style_consistency/...")
+
+
+class PipelineRunRequest(BaseModel):
+    """v4.50 PipelineOrchestrator 请求。"""
+    prompt: str = Field(..., min_length=1, description="自然语言描述")
+    image_blueprint: str | None = Field(None, description="图像蓝图 ID（None=自动匹配）")
+    consistency_mode: str | None = Field("auto", description="一致性模式")
+    width: int | None = None
+    height: int | None = None
+    steps: int | None = None
+    cfg: float | None = None
+    negative: str | None = None
+    submit: bool = Field(False, description="是否同时提交到ComfyUI")
 
 
 @app.post("/api/workflows/save")
@@ -607,6 +621,78 @@ async def plan_storyboard(req: StoryboardPlanRequest) -> dict:
 async def list_blueprints() -> dict:
     """列出所有可用蓝图（图像 + 视频）。"""
     return wa.list_all_blueprints()
+
+
+# ── v4.50 Pipeline Orchestrator API ─────────────────────────────────
+
+@app.post("/api/pipeline/run")
+async def run_pipeline_endpoint(req: PipelineRunRequest) -> dict:
+    """通过 PipelineOrchestrator 运行完整多Agent管线。
+
+    与 /api/workflows/generate 的区别：
+    - 更完整的管线追踪（每阶段状态可视化）
+    - 自动意图解析 + 蓝图匹配（无需手动指定蓝图）
+    - 统一管线上下文传递
+    """
+    import pipeline_orchestrator as po
+
+    orch = po.PipelineOrchestrator()
+    ctx = await asyncio.to_thread(
+        orch.run,
+        req.prompt,
+        image_blueprint=req.image_blueprint,
+        consistency_mode=req.consistency_mode or "auto",
+        width=req.width or 1024,
+        height=req.height or 1024,
+        steps=req.steps or 20,
+        cfg=req.cfg or 7.0,
+        negative=req.negative or "",
+        submit=req.submit,
+    )
+
+    # 构建响应
+    nodes_dict = {str(n["id"]): {"class_type": n["class_type"], "inputs": n.get("inputs", {})}
+                  for n in ctx.assembled_workflow}
+
+    graph = cc.workflow_to_graph(nodes_dict) if ctx.assembled_workflow else {}
+
+    return {
+        "validated": ctx.validated,
+        "issues": ctx.validation_issues,
+        "node_count": ctx.nodes_count,
+        "prompt_engineered": ctx.engineered_prompt,
+        "consistency_mode": ctx.consistency_mode,
+        "intent": ctx.intent,
+        "blueprint": ctx.image_blueprint_name,
+        "blueprint_id": ctx.image_blueprint_id,
+        "submitted": ctx.submitted,
+        "submit_error": ctx.submit_error,
+        "workflow_json": wa.workflow_to_prompt_json(ctx.assembled_workflow) if ctx.assembled_workflow else {},
+        "workflow_graph": graph,
+        "duration_ms": (ctx.finished_at - ctx.started_at) * 1000 if ctx.finished_at else 0,
+        "pipeline_version": "4.50",
+    }
+
+
+@app.post("/api/pipeline/storyboard")
+async def run_storyboard_pipeline_endpoint(req: StoryboardPlanRequest) -> dict:
+    """通过 PipelineOrchestrator 运行故事板管线。
+
+    比 /api/storyboard/plan 更完整，包含：
+    - 意图解析 → 蓝图匹配 → 一致性策略 → 分镜规划 → 逐镜组装
+    """
+    import pipeline_orchestrator as po
+
+    orch = po.PipelineOrchestrator()
+    result = await asyncio.to_thread(
+        orch.run_storyboard,
+        req.description,
+        num_shots=req.num_shots or 4,
+        blueprint=req.blueprint,
+        consistency_mode=req.consistency_mode or "auto",
+    )
+
+    return result
 
 
 async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
