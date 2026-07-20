@@ -18,6 +18,8 @@ import type {
   StoryboardPlanResponse,
   BlueprintListResponse,
   WorkflowGraph,
+  EntityItem,
+  EntityListResponse,
 } from './types';
 
 const BASE = '/api';
@@ -288,4 +290,42 @@ export async function runPipeline(req: PipelineRunRequest): Promise<PipelineRunR
 /** v4.50 PipelineOrchestrator 故事板管线执行 */
 export async function runPipelineStoryboard(req: StoryboardPlanRequest): Promise<StoryboardPlanResponse> {
   return postJSON<StoryboardPlanResponse>(`${BASE}/pipeline/storyboard`, req);
+}
+
+// ── v4.56 Entity Registry ───────────────────────────────────────
+
+/** 列出所有实体（可按 kind 过滤） */
+export async function listEntities(kind?: string): Promise<EntityListResponse> {
+  const q = kind ? `?kind=${kind}` : '';
+  const res = await fetch(`${BASE}/entities${q}`);
+  if (!res.ok) throw new Error(`[${res.status}] entities`);
+  return res.json() as Promise<EntityListResponse>;
+}
+
+/** 创建实体 */
+export async function createEntity(body: {
+  kind: string; name: string; alias?: string; description?: string;
+  prompt_override?: string; tags?: string[];
+}): Promise<{ entity: EntityItem }> {
+  const res = await fetch(`${BASE}/entities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`[${res.status}] create entity`);
+  return res.json();
+}
+
+/** 搜索实体 */
+export async function searchEntities(query: string): Promise<EntityListResponse> {
+  const res = await fetch(`${BASE}/entities/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error(`[${res.status}] search entities`);
+  return res.json() as Promise<EntityListResponse>;
+}
+
+/** 获取实体 prompt 前缀 */
+export async function getEntityPrompt(entityId: string): Promise<{ entity_id: string; prompt: string }> {
+  const res = await fetch(`${BASE}/entities/${entityId}/prompt`);
+  if (!res.ok) throw new Error(`[${res.status}] entity prompt`);
+  return res.json();
 }

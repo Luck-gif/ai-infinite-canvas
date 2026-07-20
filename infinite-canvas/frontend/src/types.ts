@@ -86,6 +86,7 @@ export interface CanvasNode {
   steps?: number;           // 采样步数（v4.54）
   cfg?: number;             // CFG scale（v4.54）
   createdAt?: number;       // 创建时间戳
+  description?: string;      // 节点描述（v4.56）
   // ── 控制节点（§6.22：LoRA / ControlNet 节点化）──
   kind?: 'image' | 'control' | 'video';   // 节点种类：图片节点 | 控制节点 | 视频节点
   controlKind?: 'lora' | 'controlnet'; // 控制节点子类型
@@ -360,6 +361,26 @@ export interface BlueprintItem {
 export interface BlueprintListResponse {
   image: BlueprintItem[];
   video: BlueprintItem[];
+}
+
+// ── v4.56 实体注册表 ─────────────────────────────────────────────
+
+export type EntityKind = 'character' | 'scene' | 'prop' | 'style';
+
+export interface EntityItem {
+  entity_id: string;
+  kind: EntityKind;
+  name: string;
+  alias: string;
+  description: string;
+  prompt_override: string;
+  tags: string[];
+  anchor?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface EntityListResponse {
+  entities: EntityItem[];
 }
 
 // ── v4.50 三层画布 ──────────────────────────────────────────────

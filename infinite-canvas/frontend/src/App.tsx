@@ -10,6 +10,7 @@ import { WorkflowGeneratePanel } from './WorkflowGeneratePanel';
 import { StoryboardPanel } from './StoryboardPanel';
 import { LayerPanel } from './LayerPanel';
 import { NodeEditPanel } from './NodeEditPanel';
+import { EntityBrowserPanel } from './EntityBrowserPanel';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, getStatus } from './api';
@@ -49,6 +50,7 @@ export function App() {
   const [wfLibOpen, setWfLibOpen] = useState(false);
   const [wfGenOpen, setWfGenOpen] = useState(false);
   const [storyboardOpen, setStoryboardOpen] = useState(false);
+  const [entityBrowserOpen, setEntityBrowserOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── v4.42 工作流库回调 ──────────────────────────────────────────
@@ -252,6 +254,7 @@ export function App() {
           <ToolBtn onClick={() => setTimelineOpen(!timelineOpen)} label="时间轴" title={timelineOpen ? '收起时间轴' : '展开视频时间轴'} />
           <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="v4.50 NL→工作流自动组装" />
           <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="v4.50 多分镜规划与批量组装" />
+          <ToolBtn onClick={() => setEntityBrowserOpen(!entityBrowserOpen)} label="实体库" accent title="v4.56 角色/场景/道具/风格实体注册表" />
           <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON / GPT 创建" />
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />
@@ -363,6 +366,13 @@ export function App() {
       {storyboardOpen && (
         <StoryboardPanel
           onClose={() => setStoryboardOpen(false)}
+        />
+      )}
+
+      {/* v4.56 实体浏览器面板 */}
+      {entityBrowserOpen && (
+        <EntityBrowserPanel
+          onClose={() => setEntityBrowserOpen(false)}
         />
       )}
 
