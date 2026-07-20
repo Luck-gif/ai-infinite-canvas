@@ -117,6 +117,9 @@ export function ControlPanel() {
   const addToTimeline = useCanvasStore((s) => s.addToTimeline);
   const setTimelineOpen = useCanvasStore((s) => s.setTimelineOpen);
   const timelineClips = useCanvasStore((s) => s.timelineClips);
+  // v4.51: 三层画布上下文
+  const activeLayer = useCanvasStore((s) => s.activeLayer);
+  const setActiveLayer = useCanvasStore((s) => s.setActiveLayer);
   const [loras, setLoras] = useState<string[]>([]);
   useEffect(() => {
     listLoras().then(setLoras).catch(() => {});
@@ -711,6 +714,7 @@ export function ControlPanel() {
       </div>
 
       {/* 模式：文生图 / 图生图 / 局部重绘 / 扩图（第1行）+ 视频 / 角色一致（第2行） */}
+      {/* v4.51: 模式选择器（带层级色彩标记） */}
       <div style={{ display: 'flex', gap: 8 }}>
         <SegBtn small active={p.mode === 'txt2img'} onClick={() => set('mode', 'txt2img')} label="文生图" />
         <SegBtn small active={p.mode === 'img2img'} onClick={() => set('mode', 'img2img')} label="图生图" />
@@ -718,15 +722,18 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'outpaint'} onClick={() => set('mode', 'outpaint')} label="扩图" />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" />
-        <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" />
+        <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" layer="output" />
+        <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" layer="output" />
         <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
         <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
         <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
         <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景一致" />
         <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具一致" />
-        <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" />
+        <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" layer="planning" />
       </div>
+
+      {/* v4.51: 层级上下文提示 */}
+      <PanelHint layer={activeLayer} />
 
       {/* 图生图 / 局部重绘 输入区 */}
       {(p.mode === 'img2img' || p.mode === 'inpaint') && (
@@ -1599,7 +1606,18 @@ function CollapseHeader({ open, onToggle, title }: { open: boolean; onToggle: ()
   );
 }
 
-function SegBtn({ active, onClick, label, small }: { active: boolean; onClick: () => void; label: string; small?: boolean }) {
+// ── v4.51 模式→层级映射 ────────────────────────────────────────────
+const MODE_LAYER: Record<string, string> = {
+  storyboard: 'planning',
+  txt2vid: 'output',
+  img2vid: 'output',
+  // generation（默认覆盖其余模式）
+};
+const LAYER_COLORS: Record<string, string> = { planning: '#f0a030', generation: '#4f8cff', output: '#44cc66' };
+
+function SegBtn({ active, onClick, label, small, layer }: { active: boolean; onClick: () => void; label: string; small?: boolean; layer?: string }) {
+  const accentColor = layer ? LAYER_COLORS[layer] || theme.accent.blue : theme.accent.blue;
+  const accentIce = layer === 'planning' ? '#ffe8c0' : layer === 'output' ? '#c0ffd0' : theme.accent.ice;
   return (
     <button
       onClick={onClick}
@@ -1607,17 +1625,46 @@ function SegBtn({ active, onClick, label, small }: { active: boolean; onClick: (
         flex: 1,
         padding: small ? '6px 4px' : '9px 8px',
         borderRadius: 7,
-        border: `1px solid ${active ? theme.accent.blue : theme.border.card}`,
-        background: active ? theme.bg.hoverStrong : theme.bg.card,
-        color: active ? theme.accent.ice : theme.text.soft,
+        border: `1px solid ${active ? accentColor : theme.border.card}`,
+        background: active ? (layer === 'planning' ? '#2a1f10' : layer === 'output' ? '#102a18' : theme.bg.hoverStrong) : theme.bg.card,
+        color: active ? accentIce : theme.text.soft,
         fontSize: small ? 12 : 13,
         fontWeight: active ? 600 : 400,
         cursor: 'pointer',
         whiteSpace: 'nowrap',
       }}
+      onMouseEnter={(e) => {
+        if (!active) (e.target as HTMLButtonElement).style.borderColor = accentColor;
+      }}
+      onMouseLeave={(e) => {
+        if (!active) (e.target as HTMLButtonElement).style.borderColor = theme.border.card;
+      }}
     >
       {label}
     </button>
+  );
+}
+
+/** v4.51 层级上下文提示条 */
+function PanelHint({ layer }: { layer: string }) {
+  const hints: Record<string, { label: string; tip: string; color: string }> = {
+    planning: { label: '策划层', tip: '分镜规划 / 概念设计', color: '#f0a030' },
+    generation: { label: '生成层', tip: '图像 & 视频 AI 生成', color: '#4f8cff' },
+    output: { label: '输出层', tip: '视频合成 / 导出发布', color: '#44cc66' },
+  };
+  const h = hints[layer] || hints.generation;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '4px 10px',
+      background: `${h.color}12`,
+      border: `1px solid ${h.color}40`,
+      borderRadius: 6,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: h.color, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: h.color }}>{h.label}</span>
+      <span style={{ fontSize: 10, color: theme.text.hint }}>{h.tip}</span>
+    </div>
   );
 }
 

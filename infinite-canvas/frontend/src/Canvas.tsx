@@ -271,6 +271,8 @@ export function Canvas() {
   const setSelectedIds = useCanvasStore((s) => s.setSelectedIds);
   const clearSelection = useCanvasStore((s) => s.clearSelection);
   const addLink = useCanvasStore((s) => s.addLink);
+  // v4.51: 三层画布模式
+  const activeLayer = useCanvasStore((s) => s.activeLayer);
 
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -586,6 +588,34 @@ export function Canvas() {
         }}
       >
         滚轮缩放 · 拖动节点移动 · Shift+点击多选 · 拖拽空白框选 · 点节点右侧锚点建立连线
+      </div>
+
+      {/* v4.51: 层级模式水印 */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 14,
+          top: 14,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 12px',
+          borderRadius: 20,
+          background: activeLayer === 'planning' ? '#f0a03018' : activeLayer === 'output' ? '#44cc6618' : '#4f8cff18',
+          border: `1px solid ${activeLayer === 'planning' ? '#f0a03040' : activeLayer === 'output' ? '#44cc6640' : '#4f8cff40'}`,
+          backdropFilter: 'blur(4px)',
+          pointerEvents: 'none',
+          userSelect: 'none',
+          zIndex: 40,
+        }}
+      >
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: activeLayer === 'planning' ? '#f0a030' : activeLayer === 'output' ? '#44cc66' : '#4f8cff',
+        }} />
+        <span style={{ fontSize: 11, color: theme.text.hint, fontWeight: 500 }}>
+          {activeLayer === 'planning' ? '策划模式' : activeLayer === 'output' ? '输出模式' : '生成模式'}
+        </span>
       </div>
 
       {nodes.length > 0 && (
