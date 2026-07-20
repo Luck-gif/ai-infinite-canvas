@@ -355,3 +355,149 @@ def _postprocess(intent: dict[str, Any], user_input: str = "") -> dict[str, Any]
 
     intent["params"] = params
     return intent
+
+
+# ═══════════════════════════════════════════════════════════════
+# v5.6 故事板引导式工作流 — 叙事提取
+# ═══════════════════════════════════════════════════════════════
+
+_NARRATIVE_SYSTEM = (
+    "你是一个专业的漫画/动画分镜分析师。用户会提供一段故事叙述文字，你需要从中提取：\n"
+    "1) 所有角色（名字、外观描述、性格特征、角色定位）\n"
+    "2) 所有场景（名称、环境描述、氛围）\n"
+    "3) 推荐的分镜列表（每个分镜包含：镜头描述、所属角色、场景、英文文生图 prompt）\n\n"
+    "规则：\n"
+    "- characters: 提取所有具名角色，description 用中文描述外观，traits 描述性格\n"
+    "- scenes: 提取所有场景/地点，mood 描述氛围（如 '温馨'/'紧张'/'浪漫'）\n"
+    "- shots: 将故事拆分为 4~12 个关键镜头，每个镜头提供英文 ComfyUI txt2img prompt（50~150词）\n"
+    "- 分镜 prompt 要求：详细描述画面内容、光照、构图、风格，适合英文 T5 编码器\n"
+    "- genre: 故事类型（玄幻/都市/古风/科幻/悬疑/爱情/武侠/校园）\n"
+    "- style_suggestion: 推荐的画风（水墨/manga/动漫/anime/写实/厚涂）\n"
+    "输出纯 JSON，不要包含 ```json 标记或额外解释。"
+)
+
+_NARRATIVE_FEWSHOT: list[dict[str, str]] = [
+    {"role": "user", "content": (
+        "故事：少年林风在青云山修炼，一日遇到受伤的白狐少女雪璃。"
+        "林风救了她，两人在林间小屋避雨。雪璃原来是妖族公主，被仇家追杀。"
+        "林风决定帮她对抗追兵，在月下立下守护誓约。"
+    )},
+    {"role": "assistant", "content": json.dumps({
+        "title": "青云之约",
+        "genre": "玄幻",
+        "style_suggestion": "水墨仙侠",
+        "characters": [
+            {"name": "林风", "description": "约18岁少年，束发青衫，眉目清秀，有侠气", "traits": "善良勇敢、重情义", "role": "主角"},
+            {"name": "雪璃", "description": "白狐化形的少女，银发蓝瞳，身披白色斗篷，手臂有伤", "traits": "高贵冷傲、内心温柔", "role": "主角"},
+        ],
+        "scenes": [
+            {"name": "青云山", "description": "云雾缭绕的仙山，古木参天，山间有溪流", "mood": "空灵神秘"},
+            {"name": "林间小屋", "description": "简朴的木屋，内有火炉，雨夜烛光摇曳", "mood": "温馨"},
+            {"name": "月下崖台", "description": "山顶平坦石台，俯瞰云海，月光如水", "mood": "浪漫庄严"},
+        ],
+        "shots": [
+            {"shot_id": "1", "character": "林风", "scene": "青云山", "action": "txt2img",
+             "description": "林风在青云山修炼，盘坐山巅",
+             "prompt": "a young cultivator in green robe meditating on a misty mountain peak, ancient pine trees, ethereal clouds, Chinese ink wash painting style, cinematic wide shot, soft natural light"},
+            {"shot_id": "2", "character": "林风, 雪璃", "scene": "青云山", "action": "txt2img",
+             "description": "林风发现受伤的白狐少女",
+             "prompt": "a young man discovering an injured silver-haired girl with fox ears lying under an ancient tree, white cloak, blood on her arm, concerned expression, dappled forest light"},
+            {"shot_id": "3", "character": "林风, 雪璃", "scene": "林间小屋", "action": "txt2img",
+             "description": "林风在木屋中为雪璃包扎伤口",
+             "prompt": "inside a cozy wooden cabin, a young man gently bandaging the arm of a silver-haired fox girl by candlelight, rain outside the window, warm amber lighting, intimate atmosphere, anime style"},
+            {"shot_id": "4", "character": "雪璃", "scene": "林间小屋", "action": "txt2img",
+             "description": "雪璃向林风透露自己的真实身份",
+             "prompt": "close up portrait of a beautiful silver-haired fox spirit girl, revealing expression, teary blue eyes, candlelight reflecting in her eyes, dramatic chiaroscuro lighting, emotional anime style"},
+            {"shot_id": "5", "character": "林风", "scene": "林间小屋", "action": "txt2img",
+             "description": "林风坚定地表示要保护雪璃",
+             "prompt": "a determined young cultivator clenching his fist, resolute expression, warm firelight, dramatic low-angle shot, ink wash painting style"},
+            {"shot_id": "6", "character": "林风, 雪璃", "scene": "月下崖台", "action": "txt2img",
+             "description": "月下两人立下守护誓约",
+             "prompt": "a young man and a silver-haired fox girl standing together on a cliff edge under the full moon, sea of clouds below, oath-taking pose, ethereal moonlight, romantic fantasy atmosphere, cinematic wide shot, anime style"},
+        ],
+    }, ensure_ascii=False)},
+]
+
+
+def extract_narrative_deepseek(story_text: str) -> dict[str, Any]:
+    """调用 DeepSeek 提取故事中的角色、场景、分镜（v5.6 叙事提取）。"""
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError("DEEPSEEK_API_KEY 未设置")
+    body = json.dumps({
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": _NARRATIVE_SYSTEM},
+            *_NARRATIVE_FEWSHOT,
+            {"role": "user", "content": f"故事：{_sanitize(story_text)}"},
+        ],
+        "temperature": 0.4,
+        "max_tokens": 4096,
+        "response_format": {"type": "json_object"},
+    }).encode()
+    req = urllib.request.Request(
+        f"{DEEPSEEK_BASE}/v1/chat/completions",
+        data=body,
+        headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as r:
+        data = json.loads(r.read().decode())
+    content = data["choices"][0]["message"]["content"]
+    narrative = _extract_json(content)
+
+    # 归一化：确保所有字段存在
+    narrative.setdefault("title", "")
+    narrative.setdefault("genre", "")
+    narrative.setdefault("style_suggestion", "anime")
+    narrative.setdefault("characters", [])
+    narrative.setdefault("scenes", [])
+    narrative.setdefault("shots", [])
+
+    # 过滤空字符
+    for ch in narrative["characters"]:
+        ch.setdefault("name", "未知")
+        ch.setdefault("description", "")
+        ch.setdefault("traits", "")
+        ch.setdefault("role", "角色")
+
+    for sc in narrative["scenes"]:
+        sc.setdefault("name", "未知")
+        sc.setdefault("description", "")
+        sc.setdefault("mood", "")
+
+    for i, sh in enumerate(narrative["shots"]):
+        sh.setdefault("shot_id", str(i + 1))
+        sh.setdefault("character", "")
+        sh.setdefault("scene", "")
+        sh.setdefault("action", "txt2img")
+        sh.setdefault("description", "")
+        sh.setdefault("prompt", f"{narrative.get('title', 'scene')} shot {i+1}")
+
+    return narrative
+
+
+def extract_narrative(user_input: str) -> dict[str, Any]:
+    """叙事提取主入口：DeepSeek 优先，失败降级为简单分镜。"""
+    user_input = _sanitize(user_input)
+    try:
+        return extract_narrative_deepseek(user_input)
+    except Exception as e:
+        import sys
+        print(f"[narrative] DeepSeek 失败，使用规则兜底: {e!r}", file=sys.stderr)
+        # 规则兜底：从文本长度推断分镜数
+        length = len(user_input)
+        shot_count = max(2, min(10, length // 80))
+        return {
+            "title": user_input[:30] + ("…" if len(user_input) > 30 else ""),
+            "genre": "",
+            "style_suggestion": "anime",
+            "characters": [],
+            "scenes": [],
+            "shots": [
+                {"shot_id": str(i+1), "character": "", "scene": "",
+                 "action": "txt2img", "description": f"第{i+1}幕",
+                 "prompt": f"scene {i+1} from the story, {user_input[:80]}, high quality"}
+                for i in range(shot_count)
+            ],
+        }

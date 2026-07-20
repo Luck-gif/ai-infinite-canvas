@@ -150,6 +150,23 @@ class GenerateResponse(BaseModel):
     workflow: dict | None = None  # 前端无限画布内节点图（comfy_client.workflow_to_graph）
 
 
+class NarrateRequest(BaseModel):
+    """v5.6 叙事提取 — 原始故事文本 → 结构化叙事数据。"""
+    story_text: str = Field(..., min_length=1, max_length=5000, description="故事/剧本原文（最多 5000 字）")
+    num_shots: int = Field(0, ge=0, le=20, description="期望分镜数（0=AI 自动决定）")
+
+
+class NarrateResponse(BaseModel):
+    """v5.6 叙事提取结果。"""
+    title: str
+    genre: str
+    style_suggestion: str
+    characters: list[dict]
+    scenes: list[dict]
+    shots: list[dict]  # [{shot_id, character, scene, action, description, prompt}]
+    narrative_raw: dict  # 原始 LLM 返回值
+
+
 # ── v4.38 分镜编排 ─────────────────────────────────────────────
 class StoryboardRequest(BaseModel):
     prompts: list[str] = Field(..., min_length=1, max_length=25,
@@ -512,6 +529,34 @@ async def parse_intent(req: IntentRequest) -> IntentResponse:
             action=s.get("action", "txt2img"),
             prompt=s.get("prompt", ""),
         ) for i, s in enumerate(shots_raw)],
+    )
+
+
+@app.post("/api/wizard/extract-narrative", response_model=NarrateResponse)
+async def extract_narrative_endpoint(req: NarrateRequest) -> NarrateResponse:
+    """v5.6 叙事提取：原始故事文本 → 角色/场景/分镜结构化数据。
+
+    利用 DeepSeek v4 解析故事叙述，提取：
+    - 角色（名字、外观、性格、定位）
+    - 场景（名称、环境描述、氛围）
+    - 分镜建议（每镜头包含英文文生图 prompt）
+
+    失败时规则兜底：按文本长度估算分镜数，保证前端不崩。
+    """
+    if not req.story_text or not req.story_text.strip():
+        raise HTTPException(status_code=422, detail="story_text 不能为空")
+    narrative = await asyncio.to_thread(ds.extract_narrative, req.story_text)
+    # 如果用户指定了分镜数且 AI 返回过多，截断
+    if req.num_shots > 0 and len(narrative["shots"]) > req.num_shots:
+        narrative["shots"] = narrative["shots"][:req.num_shots]
+    return NarrateResponse(
+        title=narrative.get("title", ""),
+        genre=narrative.get("genre", ""),
+        style_suggestion=narrative.get("style_suggestion", "anime"),
+        characters=narrative.get("characters", []),
+        scenes=narrative.get("scenes", []),
+        shots=narrative.get("shots", []),
+        narrative_raw=narrative,
     )
 
 

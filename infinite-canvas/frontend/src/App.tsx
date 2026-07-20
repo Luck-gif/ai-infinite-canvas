@@ -13,6 +13,7 @@ import { NodeEditPanel } from './NodeEditPanel';
 import { EntityBrowserPanel } from './EntityBrowserPanel';
 import { ChatPanel } from './ChatPanel';
 import StoryboardTimeline from './StoryboardTimeline';
+import { StoryboardWizard } from './StoryboardWizard';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, exportProject, getStatus } from './api';
@@ -56,6 +57,7 @@ export function App() {
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [entityBrowserOpen, setEntityBrowserOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [storyboardWizardOpen, setStoryboardWizardOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── v4.42 工作流库回调 ──────────────────────────────────────────
@@ -300,6 +302,38 @@ export function App() {
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* v5.6 故事板向导入口 */}
+          <button
+            onClick={() => setStoryboardWizardOpen(!storyboardWizardOpen)}
+            title="故事板引导式工作流：剧本→角色→分镜→批量生成"
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: `1.5px solid ${storyboardWizardOpen ? '#f59e0b' : '#f59e0b60'}`,
+              background: storyboardWizardOpen
+                ? 'linear-gradient(135deg, #3a2810, #401a0e)'
+                : 'linear-gradient(135deg, #2a1a08, #1a0a04)',
+              color: storyboardWizardOpen ? '#fbbf24' : '#d97706',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.2s',
+              boxShadow: storyboardWizardOpen ? '0 0 12px rgba(245,158,11,0.3)' : undefined,
+            }}
+          >
+            🎬 故事板向导
+            {storyboardWizardOpen && (
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: '#fbbf24', display: 'inline-block',
+              }} />
+            )}
+          </button>
+
           {/* v5.3 Agent 对话入口 */}
           <button
             onClick={() => setChatOpen(!chatOpen)}
@@ -592,6 +626,9 @@ export function App() {
 
       {/* v5.3 Agent 对话面板 */}
       {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+
+      {/* v5.6 故事板引导式工作流 */}
+      {storyboardWizardOpen && <StoryboardWizard onClose={() => setStoryboardWizardOpen(false)} />}
     </div>
   );
 }

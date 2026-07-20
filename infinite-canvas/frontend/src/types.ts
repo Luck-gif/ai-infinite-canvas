@@ -473,6 +473,53 @@ export interface BlueprintListResponse {
   video: BlueprintItem[];
 }
 
+// ── v5.6 故事板引导式工作流 ─────────────────────────────────────
+
+/** 叙事提取请求 */
+export interface NarrateRequest {
+  story_text: string;
+  num_shots?: number;
+}
+
+/** 叙事提取中的角色 */
+export interface NarrateCharacter {
+  name: string;
+  description: string;
+  traits: string;
+  role: string;
+}
+
+/** 叙事提取中的场景 */
+export interface NarrateScene {
+  name: string;
+  description: string;
+  mood: string;
+}
+
+/** 叙事提取中的分镜 */
+export interface NarrateShot {
+  shot_id: string;
+  character: string;
+  scene: string;
+  action: string;
+  description: string;
+  prompt: string;
+}
+
+/** 叙事提取响应 */
+export interface NarrateResponse {
+  title: string;
+  genre: string;
+  style_suggestion: string;
+  characters: NarrateCharacter[];
+  scenes: NarrateScene[];
+  shots: NarrateShot[];
+  narrative_raw: Record<string, unknown>;
+}
+
+/** 向导步骤 */
+export type WizardStep = 'script' | 'characters' | 'shots' | 'generate';
+
 // ── v4.56 实体注册表 ─────────────────────────────────────────────
 
 export type EntityKind = 'character' | 'scene' | 'prop' | 'style';

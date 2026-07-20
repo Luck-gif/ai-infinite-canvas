@@ -1,8 +1,34 @@
-# TODO.md — 无限画布 v5.5
+# TODO.md — 无限画布 v5.6
 
-> 最后更新：2026-07-20（v5.5 全部完成：SDXL 适配 + Bug 修复 + E2E 10/10 + 总测试 381/381 ✅）
+> 最后更新：2026-07-20（v5.6 故事板向导：叙事提取 API + 4步 Wizard 前端 ✅）
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
-> 权威依据：[执行标准 v5.5](../1.技术开发方案执行标准.md)
+> 权威依据：[执行标准 v5.6](../1.技术开发方案执行标准.md)
+
+---
+
+## ✅ v5.6 — 故事板引导式工作流（进行中，2026-07-20）
+
+> **核心理由**：「1人漫剧」已验证 PMF — 步骤引导降低用户认知负荷。当前 v5.5 后端能力完备但前端入口分散，Wizard 统一流程。
+
+### 实现内容
+
+- [x] **Backend: `/api/wizard/extract-narrative`** — 原始故事文本 → 角色/场景/分镜结构化数据
+  - `deepseek.py`: `extract_narrative()` 函数，DeepSeek v4 叙事提取（含 few-shot 示例）
+  - `main.py`: `NarrateRequest` + `NarrateResponse` 模型，`POST /api/wizard/extract-narrative` 端点
+  - 规则兜底：LLM 失败时按文本长度估算分镜，保证前端不崩
+- [x] **Frontend: `StoryboardWizard.tsx`** — 4步引导式面板
+  - Step 1: 剧本输入（文字 + 期望分镜数）
+  - Step 2: 角色与场景确认（可编辑 name/description/traits/mood）
+  - Step 3: 分镜预览与编辑（可编辑 prompt + 生成参数配置）
+  - Step 4: 开始生成（通过 `/api/storyboard/plan` → `loadStoryboardToCanvas`）
+  - 拖拽移动 + 步骤进度指示器
+- [x] **集成**：App.tsx 工具栏「🎬 故事板向导」按钮 + 条件渲染
+- [x] **Types & API**：`NarrateRequest/Response/Character/Scene/Shot` 类型 + `extractNarrative()` API 封装
+
+### 待验证
+
+- [ ] **全链路实际生成**: 输入完整小说 → LLM 解析 → 分镜生成 → 画布显示
+  - 需要 ComfyUI 运行中以实际生成验证
 
 ---
 
@@ -194,7 +220,7 @@
 - [ ] #30 相机运动参数 — GenParams 增加 movement/camera 字段
 - [ ] #31 多角度支持 — 角色三视图 + 全景 720°
 - [ ] #32 光照控制 — ControlNet Lighting + 参数面板
-- [ ] #33 故事板引导式工作流 — 模仿「1人漫剧」步骤引导
+- [x] #33 故事板引导式工作流 — v5.6 已实现 4步Wizard → 剧本→角色→分镜→生成
 - [ ] #34 跨层 @引用机制 — 模仿 LibTV @引用（三层画布互操作）
 
 ---
@@ -211,6 +237,7 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 | ✅ 已完成 | 所有工程项 + 模型就绪 | 11+ 天 | 100% |
 | 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型） | ✅ 已解决 | 共享库已就绪 |
 | 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 + 模型桥接 + Bug修复 + SDXL适配 + E2E 前端10/10 | ✅ | 全部完成 |
+| 🔧 v5.6 进行中 | 故事板引导式工作流（叙事提取 + 4步 Wizard） | 🚧 | 代码就绪，待全链路验证 |
 
 ### ✅ v5.5 自主迭代 (2026-07-20 完成)
 

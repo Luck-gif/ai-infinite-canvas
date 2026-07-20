@@ -21,6 +21,8 @@ import type {
   EntityItem,
   EntityListResponse,
   BatchStoryboardRequest,
+  NarrateRequest,
+  NarrateResponse,
 } from './types';
 
 const BASE = '/api';
@@ -40,6 +42,11 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
 
 export async function parseIntent(userInput: string): Promise<IntentResponse> {
   return postJSON<IntentResponse>(`${BASE}/intent`, { user_input: userInput });
+}
+
+/** v5.6 叙事提取：原始故事文本 → 角色/场景/分镜结构化数据 */
+export async function extractNarrative(arg: NarrateRequest): Promise<NarrateResponse> {
+  return postJSON<NarrateResponse>(`${BASE}/wizard/extract-narrative`, arg);
 }
 
 export interface GenerateArgs {
