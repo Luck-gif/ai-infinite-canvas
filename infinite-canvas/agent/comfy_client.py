@@ -22,6 +22,27 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# 加载 .env（确保独立导入时环境变量可用，§12.1）
+def _load_dotenv_comfy() -> None:
+    from pathlib import Path as _P
+    _env = _P(__file__).parent / ".env"
+    if not _env.is_file():
+        return
+    try:
+        with open(_env, encoding="utf-8") as _f:
+            for _l in _f:
+                _l = _l.strip()
+                if not _l or _l.startswith("#") or "=" not in _l:
+                    continue
+                _k, _, _v = _l.partition("=")
+                _k, _v = _k.strip(), _v.strip().strip("\"'")
+                if _k and _k not in os.environ:
+                    os.environ[_k] = _v
+    except Exception:
+        pass
+
+_load_dotenv_comfy()
+
 _log = logging.getLogger(__name__)
 
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")

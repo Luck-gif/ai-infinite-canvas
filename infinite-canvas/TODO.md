@@ -1,6 +1,6 @@
 # TODO.md — 无限画布 v5.5
 
-> 最后更新：2026-07-20（v5.5 持续推进：模型就绪 ✅ | wan22-txt2vid 解锁 ✅ | 环境修复 ✅）
+> 最后更新：2026-07-20（v5.5 持续迭代：SDXL LoRA/ControlNet 适配 ✅ | Bug B1/B2/B3 修复 ✅ | .env 自动加载修复 ✅）
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 权威依据：[执行标准 v5.5](../1.技术开发方案执行标准.md)
 
@@ -151,7 +151,8 @@
 | 模板 | 所需模型 | 状态 |
 |:---|:---|:--:|
 | sdxl-txt2img / img2img / inpaint | SDXL (NoobAI-XL) | ✅ |
-| sdxl-lora / controlnet | SDXL + LoRA/ControlNet | ⚠️ 需补文件 |
+| sdxl-lora | SDXL + LoRA (16 个可用, 非 SDXL 专用) | ✅ 模板可用, 需用户提供 SDXL LoRA |
+| sdxl-controlnet | SDXL + ControlNet (controlnet++_union_sdxl) | ✅ 模型已适配 |
 | wan22-img2vid / camera / first-last / fun-control | WAN2.2 I2V 14B | ✅ |
 | wan22-txt2vid | WAN2.2 T2V Bernini (LightX2V) | ✅ |
 | flux-* / sd15-* / sd3-* / hunyuan-* / cosmos-* / mochi-* (22个) | 各项模型 | ❌ 暂不需要 |
@@ -209,7 +210,7 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 |--------|:-----:|:------:|:----:|
 | ✅ 已完成 | 所有工程项 + 模型就绪 | 11+ 天 | 100% |
 | 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型） | ✅ 已解决 | 共享库已就绪 |
-| 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 + 模型桥接 | ✅ | 全部完成 |
+| 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 + 模型桥接 + Bug修复 + SDXL LoRA/ControlNet适配 | ✅ | 全部完成 |
 
 ### ✅ v5.5 自主迭代 (2026-07-20 完成)
 
@@ -227,8 +228,9 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 
 1. ✅ ~~模型下载~~ — 共享库 `C:\ai_comfyui_dd\models` 中已就绪
 2. ✅ wan22-txt2vid 模板已解锁 + TEMPLATE_REGISTRY 注册
-3. **前端 E2E**: playwright 集成测试 (当前仅单元测试 40/40)
-4. **SDXL LoRA + ControlNet**: 共享库中有对应文件，但需确认名称匹配
+3. ✅ SDXL LoRA + ControlNet 文件确认 + 模板适配 (16 LoRA / 2 ControlNet)
+4. ✅ Bug 归档: B1/B2/B3 写入 `4.漏洞及问题记录/v5.5-Bug修复报告.md`
+5. **前端 E2E**: playwright 集成测试 (当前仅单元测试 40/40)
 
 ---
 
