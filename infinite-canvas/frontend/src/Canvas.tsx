@@ -21,8 +21,20 @@ import { getNodeLayer } from './types';
 import { computeEdges, computeLinks } from './graph';
 import type { LinkEdge } from './graph';
 import { MODE_META } from './types';
-import type { CanvasNode } from './types';
+import type { CanvasNode, ShotStatus } from './types';
 import { theme } from './theme';
+
+/** v4.59 分镜状态中文标签 */
+function statusLabel(s: ShotStatus): string {
+  const map: Record<ShotStatus, string> = {
+    idle: '待生成',
+    pending: '排队中',
+    generating: '生成中',
+    done: '已完成',
+    failed: '失败',
+  };
+  return map[s] || s;
+}
 
 interface View {
   x: number;
@@ -167,6 +179,14 @@ function NodeImage({
         node.frames != null || node.fps != null ? `${node.frames ?? '?'}f/${node.fps ?? '?'}fps` : null,
         node.seed != null ? `seed ${node.seed}` : null,
         `${node.width}×${node.height}`,
+      ].filter(Boolean).join(' · ')
+    : node.mode === 'storyboard'
+    ? [
+        `🎬 分镜 #${node.shotIndex ?? '?'}`,
+        node.shotStatus ? statusLabel(node.shotStatus) : null,
+        node.shotDuration ? `${node.shotDuration}s` : null,
+        node.referenceAssets?.length ? `🔗${node.referenceAssets.length}` : null,
+        node.createdAt ? new Date(node.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : null,
       ].filter(Boolean).join(' · ')
     : [
         node.mode ? MODE_META[node.mode].label : '原创',

@@ -1,12 +1,12 @@
-# TODO.md — 无限画布 v5.0 任务队列
+# TODO.md — 无限画布 v5.1 任务队列
 
-> 最后更新：2026-07-20 (v4.56 三层画布迭代交付)
+> 最后更新：2026-07-20 (v4.59 P1 全面完成)
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 所有人请按优先级从上到下执行。
 
 ---
 
-## 🔴 P0 — v4.50 后端增强（48h 内，硬件升级前）
+## ✅ P0 — v4.50 后端增强（48h 内，硬件升级前）
 
 - [x] **#1 创建 `entity_registry.py`** — 角色/场景/道具/风格结构化注册表（JSON Schema）✅ 2026-07-20
 - [x] **#2 新增 `/api/entities/*` CRUD** — 创建/读取/更新/删除实体 ✅ 2026-07-20
@@ -23,12 +23,12 @@
 
 ✅ **v4.50 全面完成！** 后端 + 前端面板 + 三层画布 + PipelineOrchestrator + 165 测试全绿。
 
-## 🟡 P1 — v5.0 前端三层画布（硬件升级后 3-5 天）
+## ✅ P1 — v5.0 前端三层画布（全部完成！）
 
 - [x] **#8 ControlPanel.tsx 拆分** — 层级上下文提示条 + SegBtn 层级色彩标记 (v4.51) ✅
 - [x] **#9 Canvas.tsx 重构** — 三种视图模式切换：节点过滤 + 层级统计栏 (v4.55) ✅
 - [x] **#10 项目画布** — EntityBrowserPanel + 实体加载到策划层 + 描述字段 (v4.56) ✅
-- [ ] **#11 故事板画布** — 分镜编排 + 时间轴 + 资产引用 + 批量生成
+- [x] **#11 故事板画布** — 分镜编排 + 时间轴(拖拽排序) + 资产引用(实体绑定) + 批量生成 + Canvas 联动 (v4.57-v4.59) ✅
 - [x] **#12 工作流画布** — 只读→可编辑：NodeEditPanel 参数编辑/重新生成/管线提交 (v4.54) ✅
 - [x] **#13 types.ts + store.ts + api.ts 扩展** — 实体类型/层级映射/CanvasNode扩展 (v4.54-v4.56) ✅
 - [x] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）(v4.53) ✅
@@ -69,21 +69,14 @@ POST /api/export/zip          ZIP 导出
 GET  /api/env                 环境诊断
 GET  /api/health              健康检查
 ```
-POST /api/pipeline/storyboard 故事板管线
-POST /api/entities/*          实体注册表 CRUD
-GET  /api/progress/{id}       实时进度
-POST /api/export/zip          ZIP 导出
-GET  /api/env                 环境诊断
-GET  /api/health              健康检查
-```
 
 ### 测试
 ```
-165 pytest (134 unit + 22 integration + 9 E2E) — 全绿
+190 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard) — 全绿
 TypeScript: tsc 0 error
 ```
 
-### 新增模块（v4.50-v4.56）
+### 新增模块（v4.50-v4.59）
 ```
 pipeline_orchestrator.py   — 7-Agent管线编排器
 workflow_assembler.py      — 蓝图组装引擎
@@ -96,6 +89,7 @@ WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板
 NodeEditPanel.tsx           — 节点属性编辑（重新生成/管线提交/预览）
 EntityBrowserPanel.tsx      — 实体浏览与画布加载
+StoryboardTimeline.tsx      — 故事板时间轴（拖拽排序+资产绑定+批量生成）
 ```
 
 ---
