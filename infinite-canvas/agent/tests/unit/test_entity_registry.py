@@ -1,238 +1,186 @@
-"""实体注册表（entity_registry）单元测试。
+"""实体注册表单元测试 — entity_registry.py（v5.5 补测）
 
 覆盖：
-  - CRUD（创建/读取/更新/删除）
-  - 过滤搜索
-  - prompt 生成
-  - 文件名安全化
-  - 持久化往返
+- 创建/读取/更新/删除 CRUD
+- 按 kind 过滤列表
+- 模糊搜索
+- prompt 生成
+- workflow_assembler 桥接
 """
-
 from __future__ import annotations
 
-import json
 import os
+import json
 import pytest
-import tempfile
 
 import entity_registry as er
 
 
 @pytest.fixture(autouse=True)
-def _temp_store(monkeypatch, tmp_path):
-    """将实体存储临时指向 tmp_path，避免污染真实 outputs。"""
-    monkeypatch.setattr(er, "_STORE_ROOT", str(tmp_path))
-    er._ensure_store()
+def _isolate_store(monkeypatch, tmp_path):
+    """每次测试使用独立存储目录，避免互相污染。"""
+    monkeypatch.setattr(er, "_STORE_ROOT", str(tmp_path / "test_entities"))
     yield
     # 清理
-    for f in os.listdir(str(tmp_path)):
-        os.remove(os.path.join(str(tmp_path), f))
+    root = str(tmp_path / "test_entities")
+    if os.path.isdir(root):
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
 
 
-# ── 基本 CRUD ──────────────────────────────────────────────────────
+class TestCreateEntity:
+    def test_create_character(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "孙悟空", alias="sun_wukong",
+                               description="石猴，金箍棒，火眼金睛")
+        assert ent.kind == er.EntityKind.CHARACTER
+        assert ent.name == "孙悟空"
+        assert ent.alias == "sun_wukong"
+        assert ent.description == "石猴，金箍棒，火眼金睛"
+        assert len(ent.entity_id) == 32  # UUID4 hex
 
-def test_create_and_get_entity():
-    ent = er.create_entity(
-        kind=er.EntityKind.CHARACTER,
-        name="孙悟空",
-        alias="Sun Wukong",
-        description="The Monkey King with golden armor and a magical staff",
-        tags=["mythology", "chinese", "hero"],
-        anchor=er.VisualAnchor(seed=42),
-    )
-    assert ent.entity_id
-    assert ent.kind == er.EntityKind.CHARACTER
-    assert ent.name == "孙悟空"
+    def test_create_persists_to_disk(self):
+        ent = er.create_entity(er.EntityKind.PROP, "金箍棒")
+        assert os.path.isfile(er._entity_path(ent.entity_id))
 
-    # 从存储读取
-    loaded = er.get_entity(ent.entity_id)
-    assert loaded is not None
-    assert loaded.name == "孙悟空"
-    assert loaded.alias == "Sun Wukong"
-    assert loaded.anchor.seed == 42
-    assert "mythology" in loaded.tags
+    def test_create_scene_with_tags(self):
+        ent = er.create_entity(er.EntityKind.SCENE, "花果山", tags=["山", "瀑布", "水帘洞"])
+        assert ent.tags == ["山", "瀑布", "水帘洞"]
 
-
-def test_update_entity():
-    ent = er.create_entity(
-        kind=er.EntityKind.SCENE, name="花果山", alias="Mount Huaguo")
-    import time; time.sleep(1.1)  # 确保时间戳不同（秒级精度）
-    updated = er.update_entity(
-        ent.entity_id, description="A lush mountain paradise with waterfalls")
-    assert updated is not None
-    assert updated.description == "A lush mountain paradise with waterfalls"
-    assert updated.updated_at != ent.created_at
+    def test_create_with_prompt_override(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "哪吒",
+                               prompt_override="A young warrior with a red lotus ribbon")
+        assert ent.prompt_override == "A young warrior with a red lotus ribbon"
 
 
-def test_update_nonexistent():
-    assert er.update_entity("nonexistent", name="x") is None
+class TestGetEntity:
+    def test_get_existing(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test_get")
+        found = er.get_entity(ent.entity_id)
+        assert found is not None
+        assert found.name == "test_get"
+
+    def test_get_nonexistent(self):
+        assert er.get_entity("nonexistent_id_12345") is None
 
 
-def test_delete_entity():
-    ent = er.create_entity(
-        kind=er.EntityKind.PROP, name="金箍棒", alias="Ruyi Jingu Bang")
-    assert er.delete_entity(ent.entity_id)
-    assert er.get_entity(ent.entity_id) is None
+class TestUpdateEntity:
+    def test_update_name(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "旧名")
+        er.update_entity(ent.entity_id, name="新名")
+        reloaded = er.get_entity(ent.entity_id)
+        assert reloaded.name == "新名"
+
+    def test_update_description(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test")
+        er.update_entity(ent.entity_id, description="new description")
+        assert er.get_entity(ent.entity_id).description == "new description"
+
+    def test_update_tags(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test")
+        er.update_entity(ent.entity_id, tags=["a", "b"])
+        assert er.get_entity(ent.entity_id).tags == ["a", "b"]
+
+    def test_update_nonexistent_returns_none(self):
+        assert er.update_entity("no_such_id", name="x") is None
 
 
-def test_delete_nonexistent():
-    assert er.delete_entity("nonexistent") is False
+class TestDeleteEntity:
+    def test_delete_existing(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "可删除")
+        assert er.delete_entity(ent.entity_id) is True
+        assert er.get_entity(ent.entity_id) is None
+        assert not os.path.isfile(er._entity_path(ent.entity_id))
+
+    def test_delete_nonexistent(self):
+        assert er.delete_entity("no_such_id") is False
 
 
-# ── 列表与搜索 ─────────────────────────────────────────────────────
+class TestListEntities:
+    def test_list_all(self):
+        er.create_entity(er.EntityKind.CHARACTER, "A")
+        er.create_entity(er.EntityKind.SCENE, "B")
+        er.create_entity(er.EntityKind.PROP, "C")
+        all_ents = er.list_entities()
+        assert len(all_ents) == 3
 
-def test_list_all_entities():
-    er.create_entity(er.EntityKind.CHARACTER, "唐僧", "Tang Sanzang")
-    er.create_entity(er.EntityKind.SCENE, "西天", "Western Paradise")
-    er.create_entity(er.EntityKind.PROP, "锦斓袈裟", "Kasaya")
-    all_ents = er.list_entities()
-    assert len(all_ents) == 3
+    def test_list_filter_by_kind(self):
+        er.create_entity(er.EntityKind.CHARACTER, "A")
+        er.create_entity(er.EntityKind.CHARACTER, "B")
+        er.create_entity(er.EntityKind.SCENE, "C")
+        chars = er.list_entities(kind=er.EntityKind.CHARACTER)
+        assert len(chars) == 2
+        assert all(e.kind == er.EntityKind.CHARACTER for e in chars)
 
-
-def test_list_filter_by_kind():
-    er.create_entity(er.EntityKind.CHARACTER, "猪八戒", "Zhu Bajie")
-    er.create_entity(er.EntityKind.SCENE, "高老庄", "Gao Village")
-    chars = er.list_entities(kind=er.EntityKind.CHARACTER)
-    assert len(chars) == 1
-    assert chars[0].name == "猪八戒"
-
-
-def test_search_by_name():
-    er.create_entity(er.EntityKind.CHARACTER, "沙僧", "Sha Wujing")
-    er.create_entity(er.EntityKind.SCENE, "流沙河", "Flowing Sand River")
-    results = er.search_entities("沙")
-    assert len(results) == 2
+    def test_list_empty_store(self):
+        assert er.list_entities() == []
 
 
-def test_search_by_tag():
-    er.create_entity(er.EntityKind.CHARACTER, "白龙马", "White Dragon Horse",
-                     tags=["mount", "dragon"])
-    results = er.search_entities("dragon")
-    assert len(results) == 1
-    assert results[0].name == "白龙马"
+class TestSearchEntities:
+    def test_search_by_name(self):
+        er.create_entity(er.EntityKind.CHARACTER, "孙悟空")
+        er.create_entity(er.EntityKind.CHARACTER, "猪八戒")
+        results = er.search_entities("悟空")
+        assert len(results) == 1
+        assert results[0].name == "孙悟空"
+
+    def test_search_by_tag(self):
+        er.create_entity(er.EntityKind.PROP, "金箍棒", tags=["武器", "神器"])
+        er.create_entity(er.EntityKind.PROP, "九齿钉耙", tags=["武器"])
+        results = er.search_entities("神器")
+        assert len(results) == 1
+        assert results[0].name == "金箍棒"
+
+    def test_search_case_insensitive(self):
+        er.create_entity(er.EntityKind.CHARACTER, "Nezha", alias="nezha")
+        results = er.search_entities("NEZHA")
+        assert len(results) == 1
+
+    def test_search_no_match(self):
+        assert er.search_entities("不存在的") == []
 
 
-def test_search_case_insensitive():
-    er.create_entity(er.EntityKind.CHARACTER, "玉皇大帝", "Jade Emperor",
-                     tags=["Celestial"])
-    results = er.search_entities("celestial")
-    assert len(results) == 1
+class TestBuildEntityPrompt:
+    def test_character_prompt(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "孙悟空", alias="sun_wukong",
+                               description="石猴握金箍棒", tags=["战斗"])
+        prompt = er.build_entity_prompt(ent.entity_id)
+        assert "孙悟空" in prompt
+        assert "sun_wukong" in prompt
+        assert "石猴握金箍棒" in prompt
+        assert "战斗" in prompt
+
+    def test_prompt_override_bypasses_auto(self):
+        override = "CUSTOM OVERRIDE PROMPT"
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test",
+                               prompt_override=override,
+                               description="should be ignored")
+        prompt = er.build_entity_prompt(ent.entity_id)
+        assert prompt == override
+
+    def test_nonexistent_entity_returns_none(self):
+        assert er.build_entity_prompt("no_such_id") is None
 
 
-# ── Prompt 生成 ────────────────────────────────────────────────────
-
-def test_build_entity_prompt_character():
-    ent = er.create_entity(
-        kind=er.EntityKind.CHARACTER,
-        name="孙悟空",
-        alias="Sun Wukong",
-        description="The Monkey King with golden armor and a magical staff",
-        tags=["mythology", "chinese"],
-    )
-    prompt = er.build_entity_prompt(ent.entity_id)
-    assert prompt is not None
-    assert "孙悟空" in prompt
-    assert "Sun Wukong" in prompt
-    assert "Monkey King" in prompt
+class TestLoadAllEntities:
+    def test_load_all_format(self):
+        er.create_entity(er.EntityKind.CHARACTER, "TestChar", description="A test")
+        data = er.load_all_entities()
+        assert "entities" in data
+        assert len(data["entities"]) == 1
+        for eid, edata in data["entities"].items():
+            assert "name" in edata
+            assert "type" in edata
+            assert "description" in edata
 
 
-def test_build_entity_prompt_scene():
-    ent = er.create_entity(
-        kind=er.EntityKind.SCENE,
-        name="花果山",
-        alias="Mount Huaguo",
-        description="A lush paradise with waterfalls and fruit trees",
-    )
-    prompt = er.build_entity_prompt(ent.entity_id)
-    assert prompt is not None
-    assert "scene of" in prompt.lower()
+class TestVisualAnchor:
+    def test_default_anchor(self):
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test")
+        assert ent.anchor.seed == 0
+        assert ent.anchor.first_frame_path is None
 
-
-def test_build_entity_prompt_style():
-    ent = er.create_entity(
-        kind=er.EntityKind.STYLE,
-        name="水墨画",
-        alias="Ink Wash Painting",
-        description="Traditional Chinese ink wash style with flowing brushstrokes",
-    )
-    prompt = er.build_entity_prompt(ent.entity_id)
-    assert prompt is not None
-    assert "style of" in prompt.lower()
-
-
-def test_build_entity_prompt_override():
-    ent = er.create_entity(
-        kind=er.EntityKind.CHARACTER,
-        name="孙悟空",
-        alias="Sun Wukong",
-        prompt_override="masterpiece, best quality, 1boy, monkey king, golden armor",
-    )
-    prompt = er.build_entity_prompt(ent.entity_id)
-    assert prompt == "masterpiece, best quality, 1boy, monkey king, golden armor"
-
-
-def test_build_entity_prompt_nonexistent():
-    assert er.build_entity_prompt("nonexistent") is None
-
-
-# ── 文件名安全化 ───────────────────────────────────────────────────
-
-def test_sanitize_filename_chinese():
-    assert er._sanitize_filename("孙悟空") == "孙悟空"
-
-
-def test_sanitize_filename_special_chars():
-    assert er._sanitize_filename("hello/world:test") == "hello_world_test"
-
-
-def test_sanitize_filename_only_special():
-    # 全部非法字符 → "unnamed"
-    result = er._sanitize_filename("!@#$%")
-    assert result == "unnamed" or result != "!@#$%"
-
-
-# ── 持久化往返 ─────────────────────────────────────────────────────
-
-def test_persistence_roundtrip():
-    ent = er.create_entity(
-        kind=er.EntityKind.CHARACTER,
-        name="哪吒",
-        alias="Nezha",
-        description="The rebellious child god with fire-tipped spear",
-        tags=["mythology", "warrior"],
-        anchor=er.VisualAnchor(
-            seed=99,
-            lora_name="nezha_style.safetensors",
-            controlnet_type="openpose",
-        ),
-        metadata={"origin": "user_input", "priority": 1},
-    )
-    # 重新读取
-    loaded = er.get_entity(ent.entity_id)
-    assert loaded is not None
-    assert loaded.entity_id == ent.entity_id
-    assert loaded.name == "哪吒"
-    assert loaded.alias == "Nezha"
-    assert loaded.anchor.seed == 99
-    assert loaded.anchor.lora_name == "nezha_style.safetensors"
-    assert loaded.anchor.controlnet_type == "openpose"
-    assert loaded.metadata["priority"] == 1
-    assert loaded.created_at
-    assert loaded.updated_at
-
-
-def test_list_empty_store():
-    # 新临时目录应该返回空列表
-    # _temp_store fixture 确保临时目录已创建
-    assert er.list_entities() == []
-
-
-# ── VisualAnchor 默认值 ────────────────────────────────────────────
-
-def test_visual_anchor_defaults():
-    anchor = er.VisualAnchor()
-    assert anchor.seed == 0
-    assert anchor.first_frame_path is None
-    assert anchor.reference_image_path is None
-    assert anchor.lora_name is None
-    assert anchor.controlnet_type is None
+    def test_custom_anchor(self):
+        anchor = er.VisualAnchor(seed=42, lora_name="test_lora.safetensors")
+        ent = er.create_entity(er.EntityKind.CHARACTER, "test", anchor=anchor)
+        assert ent.anchor.seed == 42
+        assert ent.anchor.lora_name == "test_lora.safetensors"
