@@ -496,6 +496,8 @@ class UserTemplateMeta(BaseModel):
 @app.post("/api/intent", response_model=IntentResponse)
 async def parse_intent(req: IntentRequest) -> IntentResponse:
     """LLM 意图解析：DeepSeek v4 主路线，失败自动降级 Ollama（§8.1.6 / §14.3 自愈）。"""
+    if not req.user_input or not req.user_input.strip():
+        raise HTTPException(status_code=422, detail="user_input 不能为空")
     intent = await asyncio.to_thread(ds.parse_intent, req.user_input)
     shots_raw = intent.get("shots", []) or []
     return IntentResponse(
@@ -1442,6 +1444,35 @@ async def get_result(prompt_id: str) -> dict:
         return {"prompt_id": prompt_id, "images": [], "status": "timeout"}
     except Exception as e:
         return {"prompt_id": prompt_id, "images": [], "status": "error", "message": str(e)[:200]}
+
+
+# ── v5.4 LightX2V / SageAttention 状态查询 ─────────────────────────
+
+@app.get("/api/lightx2v/status")
+async def lightx2v_status() -> dict:
+    """查询 LightX2V 和 SageAttention 加速可用性。
+
+    返回:
+        lightx2v_available: LightX2V 蓝图是否可导入
+        sage_available: SageAttention 是否已激活
+        blueprints: 可用 LightX2V 蓝图列表
+        video_vram_gb: GPU VRAM (GB)
+    """
+    result: dict[str, Any] = {
+        "lightx2v_available": False,
+        "sage_available": False,
+        "blueprints": [],
+    }
+    from comfy_client import _vram_gb
+    result["video_vram_gb"] = round(_vram_gb(), 1)
+    try:
+        from lightx2v_blueprints import list_lightx2v_blueprints, sage_available
+        result["lightx2v_available"] = True
+        result["sage_available"] = sage_available()
+        result["blueprints"] = list_lightx2v_blueprints()
+    except ImportError:
+        pass
+    return result
 
 
 # ── v4.40 画布导出（媒体文件 ZIP 打包） ──────────────────────────

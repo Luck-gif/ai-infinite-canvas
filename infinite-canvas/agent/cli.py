@@ -44,9 +44,9 @@ except ImportError:
 # ── API 客户端 ───────────────────────────────────────────────────
 
 class ICCLient:
-    """Infinite-Canvas HTTP API 客户端（默认 http://localhost:8100）。"""
+    """Infinite-Canvas HTTP API 客户端（默认 http://localhost:5180）。"""
 
-    def __init__(self, base_url: str = "http://localhost:8100"):
+    def __init__(self, base_url: str = "http://localhost:5180"):
         self._base = base_url.rstrip("/")
         self._requests = None
 
@@ -191,7 +191,7 @@ class ICCLient:
 if HAS_CLICK:
 
     @click.group()
-    @click.option("--base-url", envvar="IC_API_URL", default="http://localhost:8100",
+    @click.option("--base-url", envvar="IC_API_URL", default="http://localhost:5180",
                   help="Infinite-Canvas API 地址")
     @click.pass_context
     def cli(ctx: click.Context, base_url: str) -> None:
@@ -381,7 +381,7 @@ if HAS_CLICK:
         click.echo("🚀 启动 Infinite-Canvas...")
         os.chdir(str(_agent_dir))
         import subprocess
-        subprocess.run([sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8100"])
+        subprocess.run([sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5180"])
 
     @cli.command()
     @click.pass_context

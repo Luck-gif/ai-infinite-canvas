@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable
 
 from entity_registry import (
     Entity, EntityKind, VisualAnchor,
@@ -41,12 +41,12 @@ class FrameContext:
     frame_index: int              # 帧序号（从 0 开始）
     total_frames: int             # 总帧数
     prompt: str                   # 当前提示词
-    character_ids: List[str] = field(default_factory=list)
-    scene_id: Optional[str] = None
-    prop_ids: List[str] = field(default_factory=list)
-    style_id: Optional[str] = None
-    params: Dict[str, Any] = field(default_factory=dict)
-    prev_frame_path: Optional[str] = None  # 前一帧图像路径
+    character_ids: list[str] = field(default_factory=list)
+    scene_id: str | None = None
+    prop_ids: list[str] = field(default_factory=list)
+    style_id: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    prev_frame_path: str | None = None  # 前一帧图像路径
 
 
 # ── 约束函数类型 ────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ def character_consistency(ctx: FrameContext) -> FrameContext:
     """将角色实体 prompt 前缀注入当前帧 prompt。"""
     if not ctx.character_ids:
         return ctx
-    prompts: List[str] = [ctx.prompt]
+    prompts: list[str] = [ctx.prompt]
     for cid in ctx.character_ids:
         p = build_entity_prompt(cid)
         if p:
@@ -208,7 +208,7 @@ def audio_consistency(ctx: FrameContext) -> FrameContext:
 # ── 管道组合 ────────────────────────────────────────────────────────
 
 # 按推荐顺序排列的 17 合 1 管道
-DEFAULT_PIPELINE: List[ConstraintFunc] = [
+DEFAULT_PIPELINE: list[ConstraintFunc] = [
     character_consistency,      # 1
     scene_consistency,          # 2
     prop_consistency,           # 3
@@ -229,12 +229,12 @@ DEFAULT_PIPELINE: List[ConstraintFunc] = [
 ]
 
 # 简化管道：仅核心一致性（前 6 个）
-CORE_PIPELINE: List[ConstraintFunc] = DEFAULT_PIPELINE[:6]
+CORE_PIPELINE: list[ConstraintFunc] = DEFAULT_PIPELINE[:6]
 
 
 def apply_pipeline(
     ctx: FrameContext,
-    pipeline: Optional[List[ConstraintFunc]] = None,
+    pipeline: list[ConstraintFunc] | None = None,
 ) -> FrameContext:
     """对帧上下文顺序应用管道中的所有约束函数。"""
     pipe = pipeline or DEFAULT_PIPELINE
@@ -244,9 +244,9 @@ def apply_pipeline(
 
 
 def apply_pipeline_to_frames(
-    frames: List[FrameContext],
-    pipeline: Optional[List[ConstraintFunc]] = None,
-) -> List[FrameContext]:
+    frames: list[FrameContext],
+    pipeline: list[ConstraintFunc] | None = None,
+) -> list[FrameContext]:
     """对多帧批量应用一致性管道。"""
     return [apply_pipeline(f, pipeline) for f in frames]
 
@@ -257,10 +257,10 @@ def build_frame_context(
     prompt: str,
     frame_index: int = 0,
     total_frames: int = 1,
-    character_ids: Optional[List[str]] = None,
-    scene_id: Optional[str] = None,
-    prop_ids: Optional[List[str]] = None,
-    style_id: Optional[str] = None,
+    character_ids: list[str] | None = None,
+    scene_id: str | None = None,
+    prop_ids: list[str] | None = None,
+    style_id: str | None = None,
     **params: Any,
 ) -> FrameContext:
     """便捷构造帧上下文。"""

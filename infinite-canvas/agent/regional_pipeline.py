@@ -328,12 +328,18 @@ def build_regional_workflow(config: RegionalConfig) -> dict[str, Any]:
     }
 
     # 串接 IPAdapter 输出到 Sampler
-    # 多个 IPAdapter 时，Regional Sampler 逐区域应用各自的 IPAdapter
+    # 多个 IPAdapter 时串行链式连接：checkpoint → IPAdapter1 → IPAdapter2 → ... → sampler
     if len(ipa_outputs) == 1:
         sampler_inputs["model"] = ipa_outputs[0]
     elif len(ipa_outputs) > 1:
-        # 逐对组合：将 IPAdapter 的 model 输出链接到 sampler
-        pass  # Regional Sampler 原生支持多 IPAdapter 输入
+        # 第1个 IPAdapter 输入来自 checkpoint，后续每个输入来自前一个 IPAdapter 输出
+        for i, ipa_id in enumerate(ipa_outputs):
+            ipa_node = nodes[str(ipa_id[0])]
+            if i == 0:
+                ipa_node["inputs"]["model"] = ["1", 0]
+            else:
+                ipa_node["inputs"]["model"] = ipa_outputs[i - 1]
+        sampler_inputs["model"] = ipa_outputs[-1]
 
     nodes["50"] = {
         "class_type": "RegionalSampler",

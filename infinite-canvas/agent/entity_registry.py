@@ -16,7 +16,7 @@ import time
 import uuid
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # ── 存储根目录 ──────────────────────────────────────────────────────
 _STORE_ROOT = os.path.join(os.path.dirname(__file__), "outputs", "entities")
@@ -36,10 +36,10 @@ class EntityKind(str, Enum):
 class VisualAnchor:
     """视觉锚点：用于跨分镜保持角色/场景外观一致性。"""
     seed: int = 0
-    first_frame_path: Optional[str] = None   # 相对 outputs/ 路径
-    reference_image_path: Optional[str] = None
-    lora_name: Optional[str] = None           # 绑定的 LoRA 文件名
-    controlnet_type: Optional[str] = None     # 如 "openpose"
+    first_frame_path: str | None = None   # 相对 outputs/ 路径
+    reference_image_path: str | None = None
+    lora_name: str | None = None           # 绑定的 LoRA 文件名
+    controlnet_type: str | None = None     # 如 "openpose"
 
 
 @dataclass
@@ -50,12 +50,12 @@ class Entity:
     name: str                               # 用户可见名称（中文）
     alias: str                              # 英文别名（用于 prompt）
     description: str                        # 自然语言描述
-    prompt_override: Optional[str] = None   # 覆盖默认 prompt 前缀
-    tags: List[str] = field(default_factory=list)
+    prompt_override: str | None = None   # 覆盖默认 prompt 前缀
+    tags: list[str] = field(default_factory=list)
     anchor: VisualAnchor = field(default_factory=VisualAnchor)
-    parent_entity_id: Optional[str] = None  # 层级关系
-    children_ids: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    parent_entity_id: str | None = None  # 层级关系
+    children_ids: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""                    # ISO 8601
     updated_at: str = ""
 
@@ -88,11 +88,11 @@ def create_entity(
     name: str,
     alias: str = "",
     description: str = "",
-    prompt_override: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    anchor: Optional[VisualAnchor] = None,
-    parent_entity_id: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    prompt_override: str | None = None,
+    tags: list[str] | None = None,
+    anchor: VisualAnchor | None = None,
+    parent_entity_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Entity:
     """创建新实体并持久化。"""
     _ensure_store()
@@ -125,7 +125,7 @@ def _save_entity(ent: Entity) -> None:
         json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def get_entity(entity_id: str) -> Optional[Entity]:
+def get_entity(entity_id: str) -> Entity | None:
     """按 ID 读取实体。"""
     path = _entity_path(entity_id)
     if not os.path.isfile(path):
@@ -138,14 +138,14 @@ def get_entity(entity_id: str) -> Optional[Entity]:
 def update_entity(
     entity_id: str,
     *,
-    name: Optional[str] = None,
-    alias: Optional[str] = None,
-    description: Optional[str] = None,
-    prompt_override: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    anchor: Optional[VisualAnchor] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> Optional[Entity]:
+    name: str | None = None,
+    alias: str | None = None,
+    description: str | None = None,
+    prompt_override: str | None = None,
+    tags: list[str] | None = None,
+    anchor: VisualAnchor | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Entity | None:
     """部分更新实体字段。"""
     ent = get_entity(entity_id)
     if ent is None:
@@ -178,10 +178,10 @@ def delete_entity(entity_id: str) -> bool:
     return True
 
 
-def list_entities(kind: Optional[EntityKind] = None) -> List[Entity]:
+def list_entities(kind: EntityKind | None = None) -> list[Entity]:
     """列出所有实体，可按 kind 过滤。"""
     _ensure_store()
-    result: List[Entity] = []
+    result: list[Entity] = []
     try:
         filenames = os.listdir(_STORE_ROOT)
     except FileNotFoundError:
@@ -201,10 +201,10 @@ def list_entities(kind: Optional[EntityKind] = None) -> List[Entity]:
     return result
 
 
-def search_entities(query: str) -> List[Entity]:
+def search_entities(query: str) -> list[Entity]:
     """按名称/别名/标签模糊搜索。"""
     q = query.lower()
-    results: List[Entity] = []
+    results: list[Entity] = []
     for ent in list_entities():
         if (q in ent.name.lower()
             or q in ent.alias.lower()
@@ -213,7 +213,7 @@ def search_entities(query: str) -> List[Entity]:
     return results
 
 
-def build_entity_prompt(entity_id: str) -> Optional[str]:
+def build_entity_prompt(entity_id: str) -> str | None:
     """为指定实体生成可用于工作流的 prompt 前缀。
 
     返回类似 "A character named 孙悟空 (Sun Wukong), wearing golden armor, ..."
@@ -241,7 +241,7 @@ def build_entity_prompt(entity_id: str) -> Optional[str]:
 
 # ── 内部工具 ────────────────────────────────────────────────────────
 
-def _dict_to_entity(d: Dict[str, Any]) -> Entity:
+def _dict_to_entity(d: dict[str, Any]) -> Entity:
     anchor_raw = d.get("anchor", {})
     return Entity(
         entity_id=d["entity_id"],

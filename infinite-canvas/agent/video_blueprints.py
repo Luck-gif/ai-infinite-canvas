@@ -16,7 +16,7 @@ from typing import Any
 
 import os
 
-_SHARED = os.environ.get("SHARED_MODEL_LIB", r"C:\ai_comfyui_dd\models")
+_SHARED = os.environ.get("SHARED_MODEL_LIB", "")
 
 # ── v5.0 模型常量（从 comfy_client.py 统一导入，此处保留向后兼容别名）──
 # 所有新蓝图应直接引用 comfy_client.VIDEO_T2V_HIGH 等常量，此处仅作过渡。
@@ -420,27 +420,6 @@ BLUEPRINT_REGISTRY: dict[str, dict[str, Any]] = {
     },
 }
 
-
-def get_blueprint(blueprint_id: str) -> dict[str, Any] | None:
-    """按 ID 查询蓝图。"""
-    return BLUEPRINT_REGISTRY.get(blueprint_id)
-
-
-def list_blueprints(category: str | None = None) -> list[dict[str, Any]]:
-    """列出所有蓝图，可按类别过滤。"""
-    result = []
-    for bp in BLUEPRINT_REGISTRY.values():
-        if category is None or bp["category"] == category:
-            result.append({
-                "id": bp["id"],
-                "name": bp["name"],
-                "category": bp["category"],
-                "license": bp["license"],
-                "vram": bp["vram"],
-                "resolution": bp["resolution"],
-                "params": bp["params"],
-            })
-    return result
 
 
 def recommend_blueprint(vram_gb: float = 16.0, mode: str = "t2v",

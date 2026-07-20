@@ -18,7 +18,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import entity_registry as er
 import consistency_manager as cm
@@ -53,12 +53,12 @@ class FramePlan:
     frame_index: int
     frame_role: FrameRole
     prompt_template: str           # 本帧 prompt 模板（{character} 等占位）
-    character_ids: List[str] = field(default_factory=list)
-    scene_id: Optional[str] = None
-    prop_ids: List[str] = field(default_factory=list)
-    style_id: Optional[str] = None
+    character_ids: list[str] = field(default_factory=list)
+    scene_id: str | None = None
+    prop_ids: list[str] = field(default_factory=list)
+    style_id: str | None = None
     duration_sec: float = 1.0      # 默认帧时长（视频模式）
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -67,10 +67,10 @@ class StoryboardPlan:
     plan_id: str
     story_structure: StoryStructure
     total_frames: int
-    frames: List[FramePlan]
-    global_style_id: Optional[str] = None
-    global_scene_id: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    frames: list[FramePlan]
+    global_style_id: str | None = None
+    global_scene_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""
 
 
@@ -82,7 +82,7 @@ def _now_iso() -> str:
 
 # ── 叙事结构 → 帧角色序列 ───────────────────────────────────────────
 
-_STRUCTURE_ROLES: Dict[StoryStructure, List[FrameRole]] = {
+_STRUCTURE_ROLES: dict[StoryStructure, list[FrameRole]] = {
     StoryStructure.THREE_ACT: [
         FrameRole.OPENING,
         FrameRole.CONFLICT,
@@ -116,14 +116,14 @@ def _role_to_prompt_template(role: FrameRole) -> str:
 # ── 主函数：生成分镜计划 ────────────────────────────────────────────
 
 def plan_storyboard(
-    intent: Dict[str, Any],
+    intent: dict[str, Any],
     *,
-    total_frames: Optional[int] = None,
-    structure: Optional[StoryStructure] = None,
-    character_ids: Optional[List[str]] = None,
-    scene_id: Optional[str] = None,
-    prop_ids: Optional[List[str]] = None,
-    style_id: Optional[str] = None,
+    total_frames: int | None = None,
+    structure: StoryStructure | None = None,
+    character_ids: list[str] | None = None,
+    scene_id: str | None = None,
+    prop_ids: list[str] | None = None,
+    style_id: str | None = None,
     description: str = "",
 ) -> StoryboardPlan:
     """根据用户意图生成分镜计划。
@@ -153,7 +153,7 @@ def plan_storyboard(
         description, roles, n_frames)
 
     # 4. 构建 FramePlan 列表
-    frames: List[FramePlan] = []
+    frames: list[FramePlan] = []
     chars = character_ids or []
     props = prop_ids or []
     scene = scene_id
@@ -186,7 +186,7 @@ def plan_storyboard(
     return plan
 
 
-def _infer_structure(intent: Dict[str, Any]) -> StoryStructure:
+def _infer_structure(intent: dict[str, Any]) -> StoryStructure:
     """从意图推断叙事结构。"""
     action = intent.get("action", "")
     params = intent.get("params", {})
@@ -201,7 +201,7 @@ def _infer_structure(intent: Dict[str, Any]) -> StoryStructure:
     return StoryStructure.LINEAR
 
 
-def _infer_frame_count(intent: Dict[str, Any], structure: StoryStructure) -> int:
+def _infer_frame_count(intent: dict[str, Any], structure: StoryStructure) -> int:
     """推断帧数。"""
     params = intent.get("params", {})
     frames = params.get("frames", 0)
@@ -221,7 +221,7 @@ def _infer_frame_count(intent: Dict[str, Any], structure: StoryStructure) -> int
 def _generate_role_sequence(
     structure: StoryStructure,
     n_frames: int,
-) -> List[FrameRole]:
+) -> list[FrameRole]:
     """为指定帧数生成角色序列。"""
     if structure in _STRUCTURE_ROLES and len(_STRUCTURE_ROLES[structure]) == n_frames:
         return list(_STRUCTURE_ROLES[structure])
@@ -236,7 +236,7 @@ def _generate_role_sequence(
             FrameRole.CLIMAX,
             FrameRole.RESOLUTION,
         ]
-        result: List[FrameRole] = []
+        result: list[FrameRole] = []
         for i in range(n_frames):
             idx = int(i / max(n_frames - 1, 1) * (len(all_roles) - 1))
             result.append(all_roles[min(idx, len(all_roles) - 1)])
@@ -246,7 +246,7 @@ def _generate_role_sequence(
     if n_frames <= len(base):
         return base[:n_frames]
     # 扩展：在角色间插入 TRANSITION
-    expanded: List[FrameRole] = []
+    expanded: list[FrameRole] = []
     for i, role in enumerate(base):
         expanded.append(role)
         if i < len(base) - 1:
@@ -259,9 +259,9 @@ def _generate_role_sequence(
 
 def _generate_frame_descriptions(
     description: str,
-    roles: List[FrameRole],
+    roles: list[FrameRole],
     n_frames: int,
-) -> List[str]:
+) -> list[str]:
     """为每帧生成简要描述。"""
     if not description:
         return [_role_to_prompt_template(r) for r in roles]
@@ -271,7 +271,7 @@ def _generate_frame_descriptions(
     if not sentences:
         sentences = [description]
 
-    result: List[str] = []
+    result: list[str] = []
     for i in range(n_frames):
         # 轮询分配句子
         sidx = int(i / max(n_frames - 1, 1) * (len(sentences) - 1))
@@ -283,10 +283,10 @@ def _generate_frame_descriptions(
 
 def plan_to_frame_contexts(
     plan: StoryboardPlan,
-    pipeline: Optional[List[cm.ConstraintFunc]] = None,
-) -> List[cm.FrameContext]:
+    pipeline: list[cm.ConstraintFunc] | None = None,
+) -> list[cm.FrameContext]:
     """将 StoryboardPlan 转换为已应用一致性管道的 FrameContext 列表。"""
-    contexts: List[cm.FrameContext] = []
+    contexts: list[cm.FrameContext] = []
     for fp in plan.frames:
         ctx = cm.FrameContext(
             frame_index=fp.frame_index,
@@ -309,8 +309,8 @@ def plan_to_frame_contexts(
 # ── 辅助：意图驱动的自动分镜（全自动链路）───────────────────────────
 
 def auto_plan_from_intent(
-    intent: Dict[str, Any],
-    entity_ids: Optional[Dict[str, List[str]]] = None,
+    intent: dict[str, Any],
+    entity_ids: dict[str, list[str]] | None = None,
 ) -> StoryboardPlan:
     """全自动：意图 → 分镜计划。
 

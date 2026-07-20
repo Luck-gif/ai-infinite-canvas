@@ -351,7 +351,20 @@ class WorkflowExecutor:
             )
 
         if node.kind == "audio":
-            # v5.0: 音频生成占位（后续对接 ChatTTS/CosyVoice2）
+            # v5.2: 对接音频蓝图（CosyVoice2 / MusicGen / Stable Audio）
+            from audio_blueprints import build_audio_workflow
+            prompt = str(inputs.get("prompt", node.prompt))
+            text = node.prompt or prompt
+            # 从 mode 推导音频子类型（txt2audio / music / sfx）
+            audio_mode = "tts"
+            if node.mode in ("music", "musicgen"):
+                audio_mode = "musicgen"
+            elif node.mode in ("sfx", "stable_audio"):
+                audio_mode = "stable_audio"
+            result = build_audio_workflow(mode=audio_mode, text=text, prompt=prompt)
+            if result and "workflow" in result:
+                return result["workflow"]
+            # 回退：音频节点无自定义节点时透传为文本输出
             return None
 
         if node.kind == "control":
