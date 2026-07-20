@@ -1,6 +1,6 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
-import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind } from './types';
+import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
@@ -143,6 +143,24 @@ interface CanvasState {
   loadStoryboardToCanvas: (shots: Array<{ shot_id: string; shot_index: number; prompt: string; node_count: number }>) => void;
   /** v4.52 画布导出 JSON */
   exportCanvas: () => string;
+
+  // ── v4.57 故事板时间轴 ──────────────────────────────────────────
+  /** 时间轴面板是否打开 */
+  storyboardTimelineOpen: boolean;
+  /** 时间轴上的分镜条目列表 */
+  storyboardShots: StoryboardTimelineShot[];
+  /** 批量生成进行中 */
+  storyboardBatchBusy: boolean;
+  /** 切换时间轴面板 */
+  setStoryboardTimelineOpen: (open: boolean) => void;
+  /** 从画布 storyboard 节点同步到时间轴 */
+  syncStoryboardFromCanvas: () => void;
+  /** 更新单个分镜的生成状态 */
+  updateShotStatus: (nodeId: string, status: ShotStatus, image?: string) => void;
+  /** 拖拽重排分镜 */
+  reorderShots: (fromIndex: number, toIndex: number) => void;
+  /** 设置批量生成进行中 */
+  setStoryboardBatchBusy: (busy: boolean) => void;
 }
 
 /** v4.50 三层画布默认配置 */
@@ -419,9 +437,68 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
         links: s.links,
         layers: s.layers,
         activeLayer: s.activeLayer,
-        version: '4.52',
+        version: '4.57',
         exportedAt: new Date().toISOString(),
       }, null, 2);
     },
+
+    // ── v4.57 故事板时间轴 ────────────────────────────────────────
+    storyboardTimelineOpen: false,
+    storyboardShots: [],
+    storyboardBatchBusy: false,
+
+    setStoryboardTimelineOpen: (open) => set({ storyboardTimelineOpen: open }),
+
+    syncStoryboardFromCanvas: () => {
+      const { nodes } = get();
+      const storyboardNodes = nodes
+        .filter((n) => n.mode === 'storyboard')
+        .sort((a, b) => (a.shotIndex ?? Infinity) - (b.shotIndex ?? Infinity));
+
+      const shots: StoryboardTimelineShot[] = storyboardNodes.map((n, i) => ({
+        nodeId: n.id,
+        shotId: n.shotId ?? n.id,
+        shotIndex: n.shotIndex ?? i + 1,
+        prompt: n.prompt ?? '',
+        status: n.shotStatus ?? 'idle',
+        generatedImage: n.filename || undefined,
+        duration: n.shotDuration,
+        referenceAssets: n.referenceAssets ?? [],
+      }));
+
+      set({ storyboardShots: shots });
+    },
+
+    updateShotStatus: (nodeId, status, image) => {
+      set((s) => ({
+        storyboardShots: s.storyboardShots.map((sh) =>
+          sh.nodeId === nodeId
+            ? { ...sh, status, ...(image !== undefined ? { generatedImage: image } : {}) }
+            : sh,
+        ),
+      }));
+      // Also update the canvas node shotStatus
+      const cur = get();
+      const node = cur.nodes.find((n) => n.id === nodeId);
+      if (node) {
+        const patch: Partial<CanvasNode> = { shotStatus: status };
+        if (image !== undefined) patch.filename = image;
+        set((s) => ({
+          nodes: s.nodes.map((nd) => (nd.id === nodeId ? { ...nd, ...patch } : nd)),
+        }));
+        persist(get());
+      }
+    },
+
+    reorderShots: (fromIndex, toIndex) => {
+      set((s) => {
+        const shots = [...s.storyboardShots];
+        const [moved] = shots.splice(fromIndex, 1);
+        shots.splice(toIndex, 0, moved);
+        return { storyboardShots: shots.map((sh, i) => ({ ...sh, shotIndex: i + 1 })) };
+      });
+    },
+
+    setStoryboardBatchBusy: (busy) => set({ storyboardBatchBusy: busy }),
   };
 });

@@ -99,6 +99,12 @@ export interface CanvasNode {
   controlModel?: string;         // ControlNet 模型文件名（含 .safetensors，v4.23）
   controlImage?: string;         // ControlNet 控制图文件名（v4.23，缺省=目标图）
   workflowGraph?: WorkflowGraph | null; // 该节点由哪个工作流生成（可「查看工作流」）
+  // ── v4.57 故事板分镜字段 ──
+  shotIndex?: number;              // 分镜序号
+  shotId?: string;                 // 故事板剧集 shot id
+  shotDuration?: number;           // 分镜时长（秒）
+  shotStatus?: ShotStatus;         // 分镜生成状态
+  referenceAssets?: string[];      // 绑定的实体 asset id 列表
 }
 
 /** 节点间手动关联（用户在画布拖拽连线建立，区别于 parentId 自动血缘） */
@@ -398,6 +404,34 @@ export interface CanvasLayer {
   visible: boolean;
   locked: boolean;
   order: number;
+}
+
+// ── v4.57 故事板时间轴 ─────────────────────────────────────────────
+
+/** 分镜生成状态 */
+export type ShotStatus = 'idle' | 'pending' | 'generating' | 'done' | 'failed';
+
+/** 故事板时间轴上的单个分镜条目 */
+export interface StoryboardTimelineShot {
+  nodeId: string;
+  shotId: string;
+  shotIndex: number;
+  prompt: string;
+  status: ShotStatus;
+  generatedImage?: string;
+  duration?: number;
+  referenceAssets: string[];
+}
+
+/** 批量故事板生成请求 */
+export interface BatchStoryboardRequest {
+  prompts: string[];
+  checkpoint?: string | null;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg?: number;
+  seed?: number;
 }
 
 // ── v4.55 模式→层级映射工具 ─────────────────────────────────────

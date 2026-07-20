@@ -11,6 +11,7 @@ import { StoryboardPanel } from './StoryboardPanel';
 import { LayerPanel } from './LayerPanel';
 import { NodeEditPanel } from './NodeEditPanel';
 import { EntityBrowserPanel } from './EntityBrowserPanel';
+import StoryboardTimeline from './StoryboardTimeline';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, getStatus } from './api';
@@ -43,6 +44,8 @@ export function App() {
   const setWfOpen = useCanvasStore((s) => s.setWfOpen);
   const timelineOpen = useCanvasStore((s) => s.timelineOpen);
   const setTimelineOpen = useCanvasStore((s) => s.setTimelineOpen);
+  const storyboardTimelineOpen = useCanvasStore((s) => s.storyboardTimelineOpen);
+  const setStoryboardTimelineOpen = useCanvasStore((s) => s.setStoryboardTimelineOpen);
 
   const [conn, setConn] = useState<string>('…');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -255,6 +258,16 @@ export function App() {
           <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="v4.50 NL→工作流自动组装" />
           <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="v4.50 多分镜规划与批量组装" />
           <ToolBtn onClick={() => setEntityBrowserOpen(!entityBrowserOpen)} label="实体库" accent title="v4.56 角色/场景/道具/风格实体注册表" />
+          <ToolBtn
+            onClick={() => {
+              const open = !storyboardTimelineOpen;
+              setStoryboardTimelineOpen(open);
+              if (open) useCanvasStore.getState().syncStoryboardFromCanvas();
+            }}
+            label="时间轴"
+            accent
+            title="v4.57 故事板时间轴（拖拽排序 + 批量生成）"
+          />
           <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON / GPT 创建" />
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />
@@ -381,6 +394,9 @@ export function App() {
 
       {/* v4.54 节点属性编辑面板 */}
       {selectedId && <NodeEditPanel />}
+
+      {/* v4.57 故事板时间轴 */}
+      {storyboardTimelineOpen && <StoryboardTimeline />}
     </div>
   );
 }

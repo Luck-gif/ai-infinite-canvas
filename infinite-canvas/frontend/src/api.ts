@@ -20,6 +20,7 @@ import type {
   WorkflowGraph,
   EntityItem,
   EntityListResponse,
+  BatchStoryboardRequest,
 } from './types';
 
 const BASE = '/api';
@@ -328,4 +329,25 @@ export async function getEntityPrompt(entityId: string): Promise<{ entity_id: st
   const res = await fetch(`${BASE}/entities/${entityId}/prompt`);
   if (!res.ok) throw new Error(`[${res.status}] entity prompt`);
   return res.json();
+}
+
+// ── v4.57 故事板时间轴批量生成 ────────────────────────────────────
+
+/** 批量生成故事板分镜（并行提交到 ComfyUI） */
+export async function batchGenerateStoryboard(
+  params: BatchStoryboardRequest,
+  onProgress?: (done: number, total: number) => void,
+): Promise<StoryboardResponse> {
+  onProgress?.(0, params.prompts.length);
+  const result = await generateStoryboard({
+    prompts: params.prompts,
+    checkpoint: params.checkpoint ?? undefined,
+    width: params.width ?? 1024,
+    height: params.height ?? 1024,
+    steps: params.steps ?? 20,
+    cfg: params.cfg ?? 7.0,
+    seed: params.seed ?? 42,
+  });
+  onProgress?.(result.frames.filter((f) => f.status === 'done').length, params.prompts.length);
+  return result;
 }
