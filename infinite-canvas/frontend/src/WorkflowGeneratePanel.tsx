@@ -47,8 +47,20 @@ export function WorkflowGeneratePanel({ onClose }: Props) {
 
   // 拖拽
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ x: 120, y: 60 });
+  const [pos, setPos] = useState(() => ({
+    x: Math.max(20, Math.round(window.innerWidth / 2 - 260)),
+    y: Math.max(20, Math.round(window.innerHeight / 2 - 240)),
+  }));
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  // ESC 关闭
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   // 加载蓝图
   useEffect(() => {
@@ -219,7 +231,7 @@ export function WorkflowGeneratePanel({ onClose }: Props) {
         }}
       >
         <span style={{ fontSize: 14, fontWeight: 600, color: theme.text.primary }}>
-          工作流生成 <span style={{ fontSize: 11, color: theme.accent.blue, fontWeight: 400 }}>v4.50</span>
+          工作流生成 <span style={{ fontSize: 11, color: theme.accent.blue, fontWeight: 400 }}>v5.3</span>
         </span>
         <button
           onClick={onClose}

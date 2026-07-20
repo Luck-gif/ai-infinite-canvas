@@ -252,23 +252,31 @@ export function App() {
           {nodes.length} 个节点
         </span>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* 核心创作入口 */}
+          <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="NL 描述 → 自动组装 ComfyUI 工作流" />
+          <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="多分镜规划、资产绑定与批量生成" />
+
+          <div style={{ width: 1, height: 18, background: theme.border.default, margin: '0 4px' }} />
+
+          {/* 资源与视图 */}
+          <ToolBtn onClick={() => setEntityBrowserOpen(!entityBrowserOpen)} label="实体库" title="角色 / 场景 / 道具 / 风格 注册表" />
           <ToolBtn onClick={() => setWfOpen(!wfOpen)} label="工作流" title={wfOpen ? '收起工作流面板' : '展开工作流面板'} />
-          <ToolBtn onClick={() => setTimelineOpen(!timelineOpen)} label="时间轴" title={timelineOpen ? '收起时间轴' : '展开视频时间轴'} />
-          <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="v4.50 NL→工作流自动组装" />
-          <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="v4.50 多分镜规划与批量组装" />
-          <ToolBtn onClick={() => setEntityBrowserOpen(!entityBrowserOpen)} label="实体库" accent title="v4.56 角色/场景/道具/风格实体注册表" />
+          <ToolBtn onClick={() => setTimelineOpen(!timelineOpen)} label="视频轴" title={timelineOpen ? '收起视频时间轴' : '展开视频时间轴'} />
           <ToolBtn
             onClick={() => {
               const open = !storyboardTimelineOpen;
               setStoryboardTimelineOpen(open);
               if (open) useCanvasStore.getState().syncStoryboardFromCanvas();
             }}
-            label="时间轴"
-            accent
-            title="v4.57 故事板时间轴（拖拽排序 + 批量生成）"
+            label="故事板"
+            title="故事板时间轴：拖拽排序 + 批量生成"
           />
-          <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON / GPT 创建" />
+          <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON" />
+
+          <div style={{ width: 1, height: 18, background: theme.border.default, margin: '0 4px' }} />
+
+          {/* 编辑操作 */}
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />
           {/* v4.40 导出下拉：JSON 归档 / ZIP 媒体包 */}

@@ -704,7 +704,7 @@ export function ControlPanel() {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          rows={3}
+          rows={4}
           style={textareaStyle}
           placeholder="例如：用 Qwen-Image 画一只在星空下奔跑的红色狐狸，赛博朋克风格"
           onKeyDown={(e) => {
@@ -713,13 +713,37 @@ export function ControlPanel() {
         />
       </div>
 
+      {/* 空画布友好提示 */}
+      {nodes.length === 0 && !text.trim() && (
+        <div style={{ ...cardStyle, background: 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.25)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: theme.text.primary, marginBottom: 6 }}>
+            快速开始
+          </div>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: theme.text.secondary, lineHeight: 1.7 }}>
+            <li>在上方输入自然语言描述</li>
+            <li>选择生成模式（文生图 / 文生视频等）</li>
+            <li>点击底部「生成」按钮，结果会自动落到画布</li>
+          </ol>
+        </div>
+      )}
+
       {/* 模式：文生图 / 图生图 / 局部重绘 / 扩图（第1行）+ 视频 / 角色一致（第2行） */}
       {/* v4.51: 模式选择器（带层级色彩标记） */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         <SegBtn small active={p.mode === 'txt2img'} onClick={() => set('mode', 'txt2img')} label="文生图" />
         <SegBtn small active={p.mode === 'img2img'} onClick={() => set('mode', 'img2img')} label="图生图" />
         <SegBtn small active={p.mode === 'inpaint'} onClick={() => set('mode', 'inpaint')} label="局部重绘" />
         <SegBtn small active={p.mode === 'outpaint'} onClick={() => set('mode', 'outpaint')} label="扩图" />
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" layer="output" />
+        <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" layer="output" />
+        <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色" />
+        <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="融合" />
+        <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格" />
+        <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景" />
+        <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具" />
+        <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" layer="planning" />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" layer="output" />
@@ -1754,7 +1778,7 @@ function LinkList({ selectedId, links, nodes, onRemove }: {
 
 // ── 样式 ────────────────────────────────────────────────
 const panelStyle: React.CSSProperties = {
-  width: 372, flexShrink: 0, borderRight: `1px solid ${theme.border.default}`, padding: 18,
+  width: 320, flexShrink: 0, borderRight: `1px solid ${theme.border.default}`, padding: 16,
   display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', background: theme.bg.panel,
 };
 const labelStyle: React.CSSProperties = { fontSize: 13, color: theme.text.label, marginBottom: 6 };
@@ -1763,6 +1787,7 @@ const cardStyle: React.CSSProperties = { background: theme.bg.card, border: `1px
 const textareaStyle: React.CSSProperties = {
   width: '100%', resize: 'vertical', background: theme.bg.card, color: theme.text.primary,
   border: `1px solid ${theme.border.card}`, borderRadius: 8, padding: 10, fontSize: 14, lineHeight: 1.5,
+  minHeight: 84,
 };
 const inputStyle: React.CSSProperties = {
   width: '100%', background: theme.bg.input, color: theme.text.primary, border: `1px solid ${theme.border.card}`,
@@ -1781,8 +1806,10 @@ const miniBtn: React.CSSProperties = {
 };
 function genBtnStyle(loading: boolean): React.CSSProperties {
   return {
-    padding: '11px 14px', borderRadius: 8, border: 'none',
-    background: loading ? theme.accent.night : theme.accent.blue, color: '#fff',
+    width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
+    background: loading ? theme.accent.night : 'linear-gradient(90deg, #4f8cff, #8b5cf6)', color: '#fff',
     fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer',
+    marginTop: 'auto', boxShadow: '0 4px 14px rgba(79,140,255,0.25)',
+    transition: 'transform 0.1s ease, box-shadow 0.2s ease',
   };
 }
