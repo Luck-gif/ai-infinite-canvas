@@ -159,9 +159,13 @@ interface CanvasState {
   updateShotStatus: (nodeId: string, status: ShotStatus, image?: string) => void;
   /** 拖拽重排分镜 */
   reorderShots: (fromIndex: number, toIndex: number) => void;
-  /** 设置批量生成进行中 */
-  setStoryboardBatchBusy: (busy: boolean) => void;
-}
+    /** 设置批量生成进行中 */
+    setStoryboardBatchBusy: (busy: boolean) => void;
+    /** 为分镜绑定实体资产 */
+    bindAssetToShot: (nodeId: string, entityId: string) => void;
+    /** 为分镜解绑实体资产 */
+    unbindAssetFromShot: (nodeId: string, entityId: string) => void;
+  }
 
 /** v4.50 三层画布默认配置 */
 const DEFAULT_LAYERS: CanvasLayer[] = [
@@ -500,5 +504,47 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     },
 
     setStoryboardBatchBusy: (busy) => set({ storyboardBatchBusy: busy }),
+
+    bindAssetToShot: (nodeId, entityId) => {
+      set((s) => {
+        // Update storyboard shot
+        const shots = s.storyboardShots.map((sh) => {
+          if (sh.nodeId !== nodeId) return sh;
+          const assets = sh.referenceAssets.includes(entityId)
+            ? sh.referenceAssets
+            : [...sh.referenceAssets, entityId];
+          return { ...sh, referenceAssets: assets };
+        });
+        // Update canvas node
+        const nodes = s.nodes.map((nd) => {
+          if (nd.id !== nodeId) return nd;
+          const assets = nd.referenceAssets ?? [];
+          return {
+            ...nd,
+            referenceAssets: assets.includes(entityId) ? assets : [...assets, entityId],
+          };
+        });
+        return { storyboardShots: shots, nodes };
+      });
+      persist(get());
+    },
+
+    unbindAssetFromShot: (nodeId, entityId) => {
+      set((s) => {
+        const shots = s.storyboardShots.map((sh) => {
+          if (sh.nodeId !== nodeId) return sh;
+          return { ...sh, referenceAssets: sh.referenceAssets.filter((a) => a !== entityId) };
+        });
+        const nodes = s.nodes.map((nd) => {
+          if (nd.id !== nodeId) return nd;
+          return {
+            ...nd,
+            referenceAssets: (nd.referenceAssets ?? []).filter((a) => a !== entityId),
+          };
+        });
+        return { storyboardShots: shots, nodes };
+      });
+      persist(get());
+    },
   };
 });
