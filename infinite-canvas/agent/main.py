@@ -695,6 +695,71 @@ async def run_storyboard_pipeline_endpoint(req: StoryboardPlanRequest) -> dict:
     return result
 
 
+# ── v4.53 Text Production API ─────────────────────────────────────
+
+class TextProductionRequest(BaseModel):
+    """v4.53 多Agent写作管线请求。"""
+    title: str = Field(..., min_length=1, description="故事标题")
+    logline: str = Field(..., min_length=1, description="一句话概要")
+    genre: str = Field("default", description="类型: fantasy/scifi/horror/anime/...")
+    tone: str = Field("epic", description="调性: epic/dark/light/whimsical")
+    setting: str = Field("", description="世界观设定")
+    num_beats: int = Field(8, ge=3, le=16, description="节拍数")
+    style: str = Field("realistic", description="视觉风格: anime/realistic/fantasy/scifi/...")
+
+
+@app.post("/api/text/produce")
+async def text_production_endpoint(req: TextProductionRequest) -> dict:
+    """多Agent写作管线：概念 → 大纲 → 角色 → 剧本 → 提示词 → 分镜。"""
+    import text_production as tp
+
+    pipeline = tp.TextProductionPipeline()
+    doc = await asyncio.to_thread(
+        pipeline.run,
+        req.title,
+        req.logline,
+        genre=req.genre,
+        tone=req.tone,
+        setting=req.setting,
+        num_beats=req.num_beats,
+        style=req.style,
+    )
+
+    return {
+        "title": doc.concept.title,
+        "logline": doc.concept.logline,
+        "genre": doc.concept.genre,
+        "beats": [
+            {"id": b.id, "index": b.index, "name": b.name,
+             "description": b.description, "emotion": b.emotion, "location": b.location}
+            for b in doc.beats
+        ],
+        "characters": [
+            {"id": c.id, "name": c.name, "archetype": c.archetype,
+             "appearance": c.appearance, "personality": c.personality,
+             "motivation": c.motivation, "relationship": c.relationship,
+             "consistent_prompt": c.consistent_prompt}
+            for c in doc.characters
+        ],
+        "scenes": [
+            {"id": s.id, "scene_index": s.scene_index, "beat_id": s.beat_id,
+             "location": s.location, "time_of_day": s.time_of_day,
+             "description": s.description, "camera_direction": s.camera_direction,
+             "lighting": s.lighting, "characters_present": s.characters_present}
+            for s in doc.scenes
+        ],
+        "prompts": [
+            {"id": p.id, "index": p.index, "scene_id": p.scene_id,
+             "english_prompt": p.english_prompt, "chinese_prompt": p.chinese_prompt,
+             "shot_type": p.shot_type, "negative": p.negative,
+             "consistency_hint": p.consistency_hint}
+            for p in doc.prompts
+        ],
+        "storyboard": doc.metadata.get("storyboard", {}),
+        "metadata": doc.metadata,
+    }
+
+
 async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
     """构造工作流（意图/兼容两条链路），返回 (template_id, wf, meta)。"""
     if req.intent:
