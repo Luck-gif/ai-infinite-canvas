@@ -58,7 +58,7 @@ import intent_map as im
 import workflow_assembler as wa
 import video_blueprints as vb
 
-app = FastAPI(title="Infinite Canvas Agent", version="0.3.0")
+app = FastAPI(title="Infinite Canvas Agent", version="0.5.3")
 
 app.add_middleware(
     CORSMiddleware,
