@@ -57,6 +57,7 @@ import entity_registry as er
 import intent_map as im
 import workflow_assembler as wa
 import video_blueprints as vb
+import audio_blueprints as ab
 
 app = FastAPI(title="Infinite Canvas Agent", version="0.5.3")
 
@@ -76,12 +77,20 @@ class IntentRequest(BaseModel):
     user_input: str = Field(..., description="用户自然语言输入（§8.1.4）")
 
 
+class StoryboardShot(BaseModel):
+    shot_id: str
+    description: str = ""
+    action: str = "txt2img"
+    prompt: str = ""
+
+
 class IntentResponse(BaseModel):
     action: str
     subject: str
     style: str
     elements: list[str] = []
     params: dict = {}
+    shots: list[StoryboardShot] = []  # v5.3: storyboard 动作时 LLM 分解的分镜镜头
 
 
 class GenerateRequest(BaseModel):
@@ -488,12 +497,19 @@ class UserTemplateMeta(BaseModel):
 async def parse_intent(req: IntentRequest) -> IntentResponse:
     """LLM 意图解析：DeepSeek v4 主路线，失败自动降级 Ollama（§8.1.6 / §14.3 自愈）。"""
     intent = await asyncio.to_thread(ds.parse_intent, req.user_input)
+    shots_raw = intent.get("shots", []) or []
     return IntentResponse(
         action=intent.get("action", "txt2img"),
         subject=intent.get("subject", ""),
         style=intent.get("style", ""),
         elements=intent.get("elements", []),
         params=intent.get("params", {}),
+        shots=[StoryboardShot(
+            shot_id=s.get("shot_id", str(i+1)),
+            description=s.get("description", ""),
+            action=s.get("action", "txt2img"),
+            prompt=s.get("prompt", ""),
+        ) for i, s in enumerate(shots_raw)],
     )
 
 
@@ -1483,6 +1499,180 @@ async def export_canvas(req: ExportCanvasRequest):
     )
 
 
+# ── v5.4 项目导出/发布管线（§11.3）─────────────────────────────────
+
+class ExportProjectRequest(BaseModel):
+    """完整项目导出：节点、连线、端口连线、实体、工作流、时间线"""
+    nodes: list[dict[str, Any]] = []
+    links: list[dict[str, Any]] = []
+    port_edges: list[dict[str, Any]] = []
+    layers: list[dict[str, Any]] = []
+    timeline: list[dict[str, Any]] = []
+    storyboard_shots: list[dict[str, Any]] = []
+    entity_ids: list[str] = []         # 要包含的实体 ID
+    workflow_graph: dict[str, Any] | None = None
+    include_media: bool = False         # 是否打包媒体文件（大文件）
+    export_format: str = "zip"          # zip | json
+
+
+class ImportProjectRequest(BaseModel):
+    """导入项目快照（JSON payload 或 base64 编码的 ZIP）"""
+    data: dict[str, Any]                # 项目快照 JSON
+    strategy: str = "merge"             # merge（合并）| replace（替换）| preview（仅预览不写入）
+
+
+@app.post("/api/export_project")
+async def export_project(req: ExportProjectRequest):
+    """完整项目快照导出 — 包含画布状态 + 实体定义 + 可选媒体文件。
+
+    返回 ZIP 文件（export_format=zip）或 JSON（export_format=json）。
+    ZIP 内包含 project.json + 可选 media/ 目录。
+    """
+    import zipfile
+    import io as io_mod
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # 收集实体数据
+    entities_data: list[dict[str, Any]] = []
+    for eid in req.entity_ids:
+        ent = er.get_entity(eid)
+        if ent:
+            entities_data.append(_entity_to_dict(ent))
+
+    # 构建项目快照
+    snapshot: dict[str, Any] = {
+        "meta": {
+            "exported_at": now_iso,
+            "version": "v5.4",
+            "app": "infinite-canvas",
+            "node_count": len(req.nodes),
+            "link_count": len(req.links),
+            "port_edge_count": len(req.port_edges),
+            "entity_count": len(entities_data),
+            "layer_count": len(req.layers),
+            "timeline_count": len(req.timeline),
+            "storyboard_shot_count": len(req.storyboard_shots),
+            "include_media": req.include_media,
+        },
+        "canvas": {
+            "nodes": req.nodes,
+            "links": req.links,
+            "port_edges": req.port_edges,
+            "layers": req.layers,
+        },
+        "timeline": req.timeline,
+        "storyboard_shots": req.storyboard_shots,
+        "entities": entities_data,
+        "workflow_graph": req.workflow_graph,
+    }
+
+    if req.export_format == "json":
+        # 纯 JSON 导出（不含媒体文件）
+        json_bytes = json.dumps(snapshot, ensure_ascii=False, indent=2).encode("utf-8")
+        return Response(
+            content=json_bytes,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="canvas-project-{uuid.uuid4().hex[:8]}.json"',
+            },
+        )
+
+    # ZIP 导出
+    buf = io_mod.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 写入 project.json
+        zf.writestr("project.json", json.dumps(snapshot, ensure_ascii=False, indent=2))
+
+        # 可选：打包媒体文件
+        if req.include_media:
+            output_dir = Path(_COMFYUI_OUTPUT_DIR)
+            added_files = 0
+            for node in req.nodes:
+                filename = node.get("filename", "")
+                if not filename:
+                    continue
+                fp = output_dir / filename
+                if fp.is_file():
+                    zf.write(fp, f"media/{filename}")
+                    added_files += 1
+            snapshot["meta"]["media_files_included"] = added_files
+
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="canvas-project-{uuid.uuid4().hex[:8]}.zip"',
+        },
+    )
+
+
+@app.post("/api/import_project")
+async def import_project(req: ImportProjectRequest):
+    """导入项目快照。
+
+    strategy:
+      - merge: 合并到现有画布（默认）
+      - replace: 清空后替换
+      - preview: 仅解析返回摘要，不写入（验证格式用）
+    """
+    data = req.data
+    meta = data.get("meta", {})
+    canvas = data.get("canvas", {})
+    entities = data.get("entities", [])
+
+    summary = {
+        "version": meta.get("version", "unknown"),
+        "exported_at": meta.get("exported_at"),
+        "node_count": meta.get("node_count", 0),
+        "link_count": meta.get("link_count", 0),
+        "port_edge_count": meta.get("port_edge_count", 0),
+        "entity_count": meta.get("entity_count", 0),
+        "layer_count": meta.get("layer_count", 0),
+        "timeline_count": meta.get("timeline_count", 0),
+        "storyboard_shot_count": meta.get("storyboard_shot_count", 0),
+    }
+
+    if req.strategy == "preview":
+        return {"strategy": "preview", "summary": summary, "valid": True}
+
+    # merge / replace — 返回数据让前端处理实际状态合并
+    imported_entities = 0
+    if req.strategy == "replace" or req.strategy == "merge":
+        for ent_dict in entities:
+            try:
+                kind = er.EntityKind(ent_dict.get("kind", "character"))
+                # 避免重复导入：按名称查重
+                existing = er.search_entities(ent_dict.get("name", ""))
+                if existing and req.strategy == "merge":
+                    continue
+                er.create_entity(
+                    kind=kind,
+                    name=ent_dict.get("name", "imported"),
+                    alias=ent_dict.get("alias", ""),
+                    description=ent_dict.get("description", ""),
+                    prompt_override=ent_dict.get("prompt_override"),
+                    tags=ent_dict.get("tags", []),
+                    metadata=ent_dict.get("metadata", {}),
+                )
+                imported_entities += 1
+            except Exception:
+                pass
+
+    return {
+        "strategy": req.strategy,
+        "summary": summary,
+        "imported_entities": imported_entities,
+        "canvas": canvas,
+        "timeline": data.get("timeline", []),
+        "storyboard_shots": data.get("storyboard_shots", []),
+        "entities": entities,
+        "workflow_graph": data.get("workflow_graph"),
+    }
+
+
 # ── v4.50 画布实体系统（§10.1）───────────────────────────────────
 
 class CreateEntityRequest(BaseModel):
@@ -1686,3 +1876,165 @@ async def get_image(filename: str) -> Response:
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=404, detail=str(e)[:200])
     return Response(content=data, media_type=ctype)
+
+
+# ═══════════════════════════════════════════════════════════════
+# v5.2 端口连线后端 CRUD（POST/GET/DELETE）
+# ═══════════════════════════════════════════════════════════════
+
+_PORT_EDGES_FILE = Path(__file__).parent / "data" / "port_edges.json"
+
+
+class PortEdgeItem(BaseModel):
+    id: str
+    fromPortId: str = Field(default="")
+    toPortId: str = Field(default="")
+    label: str | None = None
+
+
+class PortEdgesPayload(BaseModel):
+    """批量保存全部端口连线（前端完整状态同步）"""
+    edges: list[PortEdgeItem]
+
+
+def _load_port_edges() -> list[dict[str, Any]]:
+    """从 JSON 文件加载端口连线（容错）。"""
+    if not _PORT_EDGES_FILE.exists():
+        return []
+    try:
+        data = json.loads(_PORT_EDGES_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except (json.JSONDecodeError, OSError):
+        pass
+    return []
+
+
+def _save_port_edges(edges: list[dict[str, Any]]) -> None:
+    """保存端口连线到 JSON 文件。"""
+    _PORT_EDGES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _PORT_EDGES_FILE.write_text(
+        json.dumps(edges, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+@app.post("/api/port-edges")
+async def save_port_edges(payload: PortEdgesPayload):
+    """批量保存端口连线（完整覆盖模式）。
+
+    前端每次画布编辑后调用此接口同步全量 portEdges 到后端。
+    覆盖写入，非增量追加。
+    """
+    edges_data = [e.model_dump() for e in payload.edges]
+    await asyncio.to_thread(_save_port_edges, edges_data)
+    return {"status": "ok", "count": len(edges_data)}
+
+
+@app.get("/api/port-edges")
+async def get_port_edges():
+    """获取全部端口连线列表。"""
+    edges = await asyncio.to_thread(_load_port_edges)
+    return {"edges": edges, "count": len(edges)}
+
+
+@app.delete("/api/port-edges/{edge_id}")
+async def delete_port_edge(edge_id: str):
+    """删除指定端口连线。"""
+    edges = await asyncio.to_thread(_load_port_edges)
+    before = len(edges)
+    edges = [e for e in edges if e.get("id") != edge_id]
+    after = len(edges)
+    await asyncio.to_thread(_save_port_edges, edges)
+    return {"status": "ok", "deleted": before - after > 0, "remaining": after}
+
+
+@app.delete("/api/port-edges")
+async def clear_port_edges():
+    """清空所有端口连线（画布重置时调用）。"""
+    await asyncio.to_thread(_save_port_edges, [])
+    return {"status": "ok", "deleted_all": True}
+
+
+# ═══════════════════════════════════════════════════════════════
+# v5.2 音频生成端点
+# ═══════════════════════════════════════════════════════════════
+
+class AudioTTSRequest(BaseModel):
+    text: str
+    speaker: str = "default"
+    speed: float = 1.0
+    emotion: str = "neutral"
+    output_format: str = "wav"
+
+
+class AudioMusicRequest(BaseModel):
+    prompt: str
+    duration: float = 30.0
+    tempo: int = 120
+    output_format: str = "wav"
+
+
+@app.post("/api/audio/generate")
+async def audio_generate(req: AudioTTSRequest):
+    """TTS 语音合成 (CosyVoice2)。
+
+    优先通过 ComfyUI CosyVoice 节点生成，回退为直接 subprocess 调用。
+    """
+    blueprint = ab.cosyvoice_tts_workflow(
+        text=req.text,
+        speaker=req.speaker,
+        speed=req.speed,
+        emotion=req.emotion,
+        output_format=req.output_format,
+    )
+    if blueprint.get("_status") == "placeholder":
+        return {
+            "status": "unavailable",
+            "message": "CosyVoice2 ComfyUI 节点未安装，请通过 ComfyUI Manager 安装 ComfyUI-CosyVoice",
+            "blueprint": blueprint["_meta"],
+        }
+    # 提交 ComfyUI 工作流
+    try:
+        prompt_id = cc.submit_workflow(blueprint["workflow"])
+        return {
+            "status": "submitted",
+            "prompt_id": prompt_id,
+            "blueprint": blueprint["_meta"],
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)[:500],
+            "blueprint": blueprint["_meta"],
+        }
+
+
+@app.post("/api/audio/music")
+async def audio_music(req: AudioMusicRequest):
+    """音乐生成 (MusicGen / Stable Audio)。"""
+    blueprint = ab.musicgen_workflow(
+        prompt=req.prompt,
+        duration=req.duration,
+        tempo=req.tempo,
+        output_format=req.output_format,
+    )
+    if blueprint.get("_status") == "placeholder":
+        return {
+            "status": "unavailable",
+            "message": "MusicGen ComfyUI 节点未安装",
+            "blueprint": blueprint["_meta"],
+        }
+    try:
+        prompt_id = cc.submit_workflow(blueprint["workflow"])
+        return {
+            "status": "submitted",
+            "prompt_id": prompt_id,
+            "blueprint": blueprint["_meta"],
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)[:500],
+            "blueprint": blueprint["_meta"],
+        }
