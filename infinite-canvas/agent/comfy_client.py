@@ -806,6 +806,8 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "wan22-camera": "wan22-camera.json",
     "wan22-first-last": "wan22-first-last.json",
     "wan22-fun-control": "wan22-fun-control.json",
+    # v5.5: T2V 走 LightX2V 蓝图（非 JSON 模板），模板只是桥梁入口
+    "wan22-txt2vid": "__blueprint__build_txt2vid",
 }
 
 
@@ -834,7 +836,12 @@ def apply_template(template_name: str, **params: Any) -> dict[str, Any]:
         wf = apply_template("wan22-img2vid", unet_name="wan2.2_i2v_480p_14b.safetensors",
                             image_name="start_frame.png", prompt="cinematic motion",
                             width=832, height=480, length=81, fps=16, seed=42)
+
+    v5.5: wan22-txt2vid 走 LightX2V 蓝图（非 JSON 模板），自动选 VRAM 线路。
     """
+    # 蓝图桥接：wan22-txt2vid → build_txt2vid() LightX2V
+    if template_name == "wan22-txt2vid":
+        return build_txt2vid(**params)
     wf = load_template(template_name)
     return _inject_params(wf, **params)
 

@@ -367,18 +367,34 @@ export function App() {
                 toastChannel.push('info', '没有端口连线，请先在画布上连接节点的端口');
                 return;
               }
+              // 找根节点：没有被任何线指向的节点（拓扑起点）
+              const targetIds = new Set(s.portEdges.map(e => e.toPortId));
+              const rootNode = s.nodes.find(n =>
+                n.ports?.some(p => p.id && !targetIds.has(p.id) && p.type === 'image')
+              );
+              if (!rootNode) {
+                toastChannel.push('warning', '找不到链路起点，请检查端口连线起始节点');
+                return;
+              }
               try {
                 const res = await fetch('/api/workflow/execute-chain', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    nodes: s.nodes.filter(n => n.filename),
+                    root_node_id: rootNode.id,
+                    nodes: s.nodes,
                     port_edges: s.portEdges,
                   }),
                 });
                 const data = await res.json();
-                if (data.status === 'ok') {
-                  toastChannel.push('success', `工作流执行完成: ${data.results?.length ?? 0} 个节点`);
+                if (data.results) {
+                  // 将生成结果写回节点
+                  for (const r of data.results) {
+                    if (r.status === 'generated' && r.output_file) {
+                      s.updateNode(r.node_id, { filename: r.output_file });
+                    }
+                  }
+                  toastChannel.push('success', `工作流执行完成: ${data.results.length} 个节点`);
                 } else {
                   toastChannel.push('error', `执行失败: ${data.error || '未知错误'}`);
                 }

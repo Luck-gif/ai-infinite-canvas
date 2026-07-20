@@ -368,14 +368,55 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       // 去重：已存在同端口连线则忽略
       if (s.portEdges.some((e) => e.fromPortId === pe.fromPortId && e.toPortId === pe.toPortId)) return;
       snapshot(set, get);
-      set((st) => ({ portEdges: [...st.portEdges, pe] }));
+      set((st) => ({
+        portEdges: [...st.portEdges, pe],
+        // v5.5: 同步更新 nodes[*].ports[*].connectedTo
+        nodes: st.nodes.map((nd) => {
+          const pts = nd.ports;
+          if (!pts) return nd;
+          let changed = false;
+          const updated = pts.map((p) => {
+            if (p.id === pe.fromPortId && !p.connectedTo.includes(pe.toPortId)) {
+              changed = true;
+              return { ...p, connectedTo: [...p.connectedTo, pe.toPortId] };
+            }
+            if (p.id === pe.toPortId && !p.connectedTo.includes(pe.fromPortId)) {
+              changed = true;
+              return { ...p, connectedTo: [...p.connectedTo, pe.fromPortId] };
+            }
+            return p;
+          });
+          return changed ? { ...nd, ports: updated } : nd;
+        }),
+      }));
       persist(get());
     },
 
     removePortEdge: (id) => {
-      if (!get().portEdges.some((e) => e.id === id)) return;
+      const pe = get().portEdges.find((e) => e.id === id);
+      if (!pe) return;
       snapshot(set, get);
-      set((st) => ({ portEdges: st.portEdges.filter((e) => e.id !== id) }));
+      set((st) => ({
+        portEdges: st.portEdges.filter((e) => e.id !== id),
+        // v5.5: 同步清理 nodes[*].ports[*].connectedTo
+        nodes: st.nodes.map((nd) => {
+          const pts = nd.ports;
+          if (!pts) return nd;
+          let changed = false;
+          const updated = pts.map((p) => {
+            if (p.id === pe.fromPortId) {
+              changed = true;
+              return { ...p, connectedTo: p.connectedTo.filter((c) => c !== pe.toPortId) };
+            }
+            if (p.id === pe.toPortId) {
+              changed = true;
+              return { ...p, connectedTo: p.connectedTo.filter((c) => c !== pe.fromPortId) };
+            }
+            return p;
+          });
+          return changed ? { ...nd, ports: updated } : nd;
+        }),
+      }));
       persist(get());
     },
 

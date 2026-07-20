@@ -1886,6 +1886,7 @@ async def execute_chain_endpoint(req: ExecuteChainRequest) -> dict:
     from workflow_executor import execute_chain as _exec
     results = _exec(req.root_node_id, req.nodes, req.port_edges, wait=True)
     return {
+        "status": "ok",
         "results": [
             {
                 "node_id": r.node_id,

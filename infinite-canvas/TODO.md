@@ -1,6 +1,6 @@
 # TODO.md — 无限画布 v5.5
 
-> 最后更新：2026-07-20（v5.5 迭代推进中：环境修复 + 测试补齐 + 前端优化已完成 ✅ | 模型下载待手动操作）
+> 最后更新：2026-07-20（v5.5 持续推进：模型就绪 ✅ | wan22-txt2vid 解锁 ✅ | 环境修复 ✅）
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 权威依据：[执行标准 v5.5](../1.技术开发方案执行标准.md)
 
@@ -133,14 +133,18 @@
 - [x] `build_txt2img()` 优先使用模板引擎，回退到硬编码
 - [x] 9 个可用模板：sdxl-txt2img, sdxl-img2img, sdxl-inpaint, sdxl-lora, sdxl-controlnet, wan22-img2vid, wan22-camera, wan22-first-last, wan22-fun-control
 
-#### Step 2：下载 WAN2.2 T2V 模型补 txt2vid 缺口（⏳ 等待 32GB 下载）
+#### Step 2：WAN2.2 T2V 模型就绪 ✅（已完成 2026-07-20）
 
-- [ ] 下载 WAN2.2 Bernini T2V 高噪模型 `wan2.2_bernini_r_high_noise_mxfp8.safetensors` (~14GB)
-- [ ] 下载 WAN2.2 Bernini T2V 低噪模型 `wan2.2_bernini_r_low_noise_mxfp8.safetensors` (~14GB)
-- [ ] unlock wan22-txt2vid 模板 → `TEMPLATE_REGISTRY` 注册
-- [ ] 下载 IPAdapter SD15 模型 `ip-adapter-plus_sd15.safetensors` 到 `models/ipadapter/`
+> 模型已在共享库 `C:\ai_comfyui_dd\models` 中就绪，无需下载。
 
-> 📋 模型下载地址: `https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI` (T2V) + `https://huggingface.co/h94/IP-Adapter` (SD15)
+- [x] WAN2.2 Bernini T2V 高噪: `diffusion_models/wan2.2_bernini_r_high_noise_mxfp8.safetensors` ✅
+- [x] WAN2.2 Bernini T2V 低噪: `diffusion_models/wan2.2_bernini_r_low_noise_mxfp8.safetensors` ✅
+- [x] GGUF Q5 量化: `diffusion_models/Wan22_Bernini_LOW-Q5_K_M.gguf` ✅ (适配 16GB VRAM)
+- [x] IPAdapter SD15: `ipadapter/shareai/ipadapter_models/ip-adapter-plus_sd15.safetensors` ✅
+- [x] `env_check.py` 路径修正: Bernini → `diffusion_models` (原误写 `unet`)
+- [x] `video_blueprints.py` GGUF 文件名修正: `Wan22_Bernini_LOW-Q5_K_M.gguf`
+- [x] `wan22-txt2vid` 模板注册 → 桥接 `build_txt2vid()` LightX2V 蓝图
+- [x] TEMPLATE_REGISTRY 从 9→10 个模板（新增 wan22-txt2vid）
 
 #### 对照表（模板 vs 模型匹配）
 
@@ -149,7 +153,7 @@
 | sdxl-txt2img / img2img / inpaint | SDXL (NoobAI-XL) | ✅ |
 | sdxl-lora / controlnet | SDXL + LoRA/ControlNet | ⚠️ 需补文件 |
 | wan22-img2vid / camera / first-last / fun-control | WAN2.2 I2V 14B | ✅ |
-| wan22-txt2vid | WAN2.2 T2V Bernini | ❌ 32GB |
+| wan22-txt2vid | WAN2.2 T2V Bernini (LightX2V) | ✅ |
 | flux-* / sd15-* / sd3-* / hunyuan-* / cosmos-* / mochi-* (22个) | 各项模型 | ❌ 暂不需要 |
 
 ---
@@ -203,9 +207,9 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 
 | 优先级 | 任务数 | 预估天数 | 状态 |
 |--------|:-----:|:------:|:----:|
-| ✅ 已完成 | 所有工程项 | 11+ 天 | 100% |
-| 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型下载） | 等待 | 约28GB |
-| 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 | 已完成 | ✅ |
+| ✅ 已完成 | 所有工程项 + 模型就绪 | 11+ 天 | 100% |
+| 🔴 P0 当前 | v5.4 模板移植 Step 2（WAN2.2 T2V 模型） | ✅ 已解决 | 共享库已就绪 |
+| 🔧 v5.5 已完成 | 环境修复 + 测试补齐 + 前端优化 + 模型桥接 | ✅ | 全部完成 |
 
 ### ✅ v5.5 自主迭代 (2026-07-20 完成)
 
@@ -219,11 +223,12 @@ v4.43 → v4.50 → v5.0 → v5.1 → v5.2 → v5.3 → v5.3.3 → v5.4
 | ♻️ 代码重构 | StoryboardTimeline 批量生成去重 | -35行, 0回归 |
 | 📝 文档同步 | TODO.md + 执行标准 + 迭代记录 | 反映 v5.5 状态 |
 
-### 🔜 v5.5 剩余 (需手动操作)
+### 🔜 v5.5 剩余
 
-1. **模型下载**: WAN2.2 T2V (~28GB) + IPAdapter SD15 (~380MB) — HuggingFace
-2. 下载后: unlock wan22-txt2vid 模板 + TEMPLATE_REGISTRY 注册
+1. ✅ ~~模型下载~~ — 共享库 `C:\ai_comfyui_dd\models` 中已就绪
+2. ✅ wan22-txt2vid 模板已解锁 + TEMPLATE_REGISTRY 注册
 3. **前端 E2E**: playwright 集成测试 (当前仅单元测试 40/40)
+4. **SDXL LoRA + ControlNet**: 共享库中有对应文件，但需确认名称匹配
 
 ---
 

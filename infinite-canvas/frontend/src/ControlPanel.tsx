@@ -297,7 +297,7 @@ export function ControlPanel() {
         id: crypto.randomUUID(),
         filename: res.images[0],
         prompt: tgt.prompt || text,
-        templateId: res.template_id,
+        templateId: res.template_id || 'unknown',
         x: tgt.x + tgt.width + 60,
         y: tgt.y,
         width: dw,

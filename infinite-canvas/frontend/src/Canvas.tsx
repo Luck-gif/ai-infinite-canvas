@@ -356,7 +356,7 @@ function NodeImage({
       {inputPorts.map((port, i) => {
         const pos = getPortPos(port, i, inputPorts.length, 'left');
         const color = PORT_COLORS[port.type] || '#888';
-        const isConnected = port.connectedTo != null && port.connectedTo !== undefined;
+        const isConnected = port.connectedTo != null && port.connectedTo.length > 0;
         return (
           <Group key={`ip-${port.id}`} x={pos.x} y={pos.y} offsetX={portRadius} offsetY={portRadius}>
             <Circle
@@ -386,7 +386,7 @@ function NodeImage({
       {outputPorts.map((port, i) => {
         const pos = getPortPos(port, i, outputPorts.length, 'right');
         const color = PORT_COLORS[port.type] || '#888';
-        const isConnected = port.connectedTo != null && port.connectedTo !== undefined;
+        const isConnected = port.connectedTo != null && port.connectedTo.length > 0;
         return (
           <Group key={`op-${port.id}`} x={pos.x} y={pos.y} offsetX={-portRadius} offsetY={portRadius}>
             <Circle

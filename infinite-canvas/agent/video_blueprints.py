@@ -27,7 +27,7 @@ try:
         VIDEO_CLIP, VIDEO_VAE,
     )
     WAN22_T2V_FP8_UNET = VIDEO_T2V_LOW   # 向后兼容（低噪 UNET）
-    WAN22_T2V_GGUF_UNET = "wan2.2_t2v_14B_Q5_K_M.gguf"  # GGUF 无 Barnini 版本，保留
+    WAN22_T2V_GGUF_UNET = "Wan22_Bernini_LOW-Q5_K_M.gguf"  # GGUF 低噪 UNET，适配 16GB VRAM
     WAN22_I2V_FP8_UNET = VIDEO_I2V_LOW   # 向后兼容
     WAN22_CLIP = VIDEO_CLIP
     WAN22_VAE = VIDEO_VAE
@@ -35,7 +35,7 @@ try:
 except ImportError:
     # 降级：直接定义（comfy_client.py 不可用时）
     WAN22_T2V_FP8_UNET = "wan2.2_bernini_r_low_noise_mxfp8.safetensors"
-    WAN22_T2V_GGUF_UNET = "wan2.2_t2v_14B_Q5_K_M.gguf"
+    WAN22_T2V_GGUF_UNET = "Wan22_Bernini_LOW-Q5_K_M.gguf"
     WAN22_I2V_FP8_UNET = "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
     WAN22_CLIP = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
     WAN22_VAE = "wan_2.1_vae.safetensors"

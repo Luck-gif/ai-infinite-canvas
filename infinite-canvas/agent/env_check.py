@@ -80,12 +80,12 @@ MODEL_FILES: dict[str, str] = {
     # Wan2.2 视频
     "umt5_xxl_fp8_e4m3fn_scaled.safetensors": "clip",
     "wan_2.1_vae.safetensors": "vae",
-    "wan2.2_bernini_r_high_noise_mxfp8.safetensors": "unet",
-    "wan2.2_bernini_r_low_noise_mxfp8.safetensors": "unet",
+    "wan2.2_bernini_r_high_noise_mxfp8.safetensors": "diffusion_models",
+    "wan2.2_bernini_r_low_noise_mxfp8.safetensors": "diffusion_models",
     "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors": "unet",
     "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors": "unet",
     # IPAdapter
-    "ip-adapter-plus_sd15.safetensors": "ipadapter",
+    "ip-adapter-plus_sd15.safetensors": "ipadapter/shareai/ipadapter_models",
 }
 
 # InsightFace 模型（IPAdapterInsightFaceLoader 依赖）
