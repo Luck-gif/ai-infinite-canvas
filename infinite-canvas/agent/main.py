@@ -21,6 +21,7 @@ import asyncio
 import json
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ _load_dotenv()
 
 import comfy_client as cc
 import deepseek as ds
+import entity_registry as er
 import intent_map as im
 
 app = FastAPI(title="Infinite Canvas Agent", version="0.3.0")
@@ -161,6 +163,26 @@ class StoryboardResponse(BaseModel):
     frames: list[StoryboardFrame] = []
     issues: list[str] = []
     template_id: str = "storyboard_sdxl"
+
+
+# ── v4.39 视频拼接 ─────────────────────────────────────────────
+_COMFYUI_OUTPUT_DIR = os.environ.get(
+    "COMFYUI_OUTPUT_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "..", "..", "ComfyUI", "output"),
+)
+
+
+class ConcatVideosRequest(BaseModel):
+    video_names: list[str] = Field(..., min_length=1, max_length=50,
+                                    description="要拼接的视频文件名列表（ComfyUI output 下的 mp4）")
+    output_name: str | None = None
+
+
+class ConcatVideosResponse(BaseModel):
+    validated: bool
+    filename: str | None = None  # 拼接后的输出文件名
+    issues: list[str] = []
 
 
 # ── 用户模板管理（v4.31）─────────────────────────────────────────
@@ -294,6 +316,112 @@ async def delete_user_template(name: str) -> dict:
         raise HTTPException(status_code=404, detail=f"模板 '{name}' 不存在")
     path.unlink()
     return {"deleted": safe}
+
+
+# ── v4.42 自定义 ComfyUI 工作流库 + GPT 辅助创建 ────────────────
+_WORKFLOWS_DIR = Path(__file__).parent / "workflows"
+_WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class SaveWorkflowRequest(BaseModel):
+    name: str
+    description: str = ""
+    workflow_json: dict
+
+
+class WorkflowMeta(BaseModel):
+    name: str
+    description: str
+    node_count: int
+    saved_at: float
+
+
+class GptWorkflowRequest(BaseModel):
+    description: str
+
+
+@app.post("/api/workflows/save")
+async def save_workflow(req: SaveWorkflowRequest) -> dict:
+    """保存自定义 ComfyUI 工作流 JSON。"""
+    safe = _safe_name(req.name)
+    path = _WORKFLOWS_DIR / f"{safe}.json"
+    data = {
+        "name": req.name,
+        "description": req.description,
+        "saved_at": time.time(),
+        "workflow_json": req.workflow_json,
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    nc = len(req.workflow_json) if isinstance(req.workflow_json, dict) else 0
+    return {"name": safe, "node_count": nc}
+
+
+@app.get("/api/workflows")
+async def list_workflows() -> list[WorkflowMeta]:
+    """列出所有已保存的自定义工作流。"""
+    result: list[WorkflowMeta] = []
+    for path in sorted(_WORKFLOWS_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            wf = data.get("workflow_json", {})
+            nc = len(wf) if isinstance(wf, dict) else 0
+            result.append(WorkflowMeta(
+                name=data.get("name", path.stem),
+                description=data.get("description", ""),
+                node_count=nc,
+                saved_at=data.get("saved_at", 0),
+            ))
+        except Exception:
+            continue
+    return result
+
+
+@app.get("/api/workflows/{name}")
+async def load_workflow(name: str) -> dict:
+    """加载单个自定义工作流完整数据（含可视化图）。"""
+    safe = _safe_name(name)
+    path = _WORKFLOWS_DIR / f"{safe}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"工作流 '{name}' 不存在")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        wf = data.get("workflow_json", {})
+        if isinstance(wf, dict) and wf:
+            graph = cc.workflow_to_graph(wf)
+            data["workflow_graph"] = graph
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取工作流失败: {e}")
+
+
+@app.delete("/api/workflows/{name}")
+async def delete_workflow(name: str) -> dict:
+    """删除指定工作流。"""
+    safe = _safe_name(name)
+    path = _WORKFLOWS_DIR / f"{safe}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"工作流 '{name}' 不存在")
+    path.unlink()
+    return {"deleted": safe}
+
+
+@app.post("/api/workflows/gpt")
+async def gpt_create_workflow(req: GptWorkflowRequest) -> dict:
+    """GPT 辅助：从自然语言描述生成 ComfyUI 工作流 JSON。
+
+    流程：用户描述 → LLM 解析意图 → 模板映射 → 构建工作流 → 返回 JSON + 图。
+    """
+    intent = await asyncio.to_thread(ds.parse_intent, req.description)
+    tid, wf, meta = await asyncio.to_thread(im.build_workflow, intent, None, 1, None)
+    graph = cc.workflow_to_graph(wf)
+    nc = len(wf) if isinstance(wf, dict) else 0
+    return {
+        "template_id": tid,
+        "node_count": nc,
+        "intent": intent,
+        "workflow_json": wf,
+        "workflow_graph": graph,
+    }
 
 
 async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
@@ -510,6 +638,106 @@ async def storyboard(req: StoryboardRequest) -> StoryboardResponse:
     return StoryboardResponse(validated=True, frames=frames)
 
 
+# ── v4.39 视频多段拼接 ──────────────────────────────────────────
+@app.post("/api/concat_videos", response_model=ConcatVideosResponse)
+async def concat_videos(req: ConcatVideosRequest) -> ConcatVideosResponse:
+    """视频多段拼接：使用 ffmpeg concat demuxer 拼接 MP4 文件列表。
+
+    接收 ComfyUI output 目录下的视频文件名列表，按顺序拼接为单个 mp4 文件。
+    所有输入文件必须存在于 output_dir 中，格式统一为 h264-mp4（VHS_VideoCombine 默认输出）。
+    """
+    import subprocess
+    import tempfile
+
+    output_dir = Path(_COMFYUI_OUTPUT_DIR)
+    if not output_dir.is_dir():
+        return ConcatVideosResponse(
+            validated=False,
+            issues=[f"ComfyUI 输出目录不存在: {output_dir}（请设置 COMFYUI_OUTPUT_DIR 环境变量）"],
+        )
+
+    # 1) 校验所有视频文件存在
+    missing: list[str] = []
+    for name in req.video_names:
+        p = output_dir / name
+        if not p.is_file():
+            missing.append(name)
+    if missing:
+        return ConcatVideosResponse(
+            validated=False,
+            issues=[f"以下视频文件不存在: {', '.join(missing[:5])}"],
+        )
+
+    # 2) 构建 concat 文件列表
+    list_lines = []
+    for name in req.video_names:
+        p = output_dir / name
+        # ffmpeg concat demuxer 需要转义路径（用单引号包裹，内部 ' 替换为 '\\''）
+        safe = str(p.resolve()).replace("\\", "/")
+        list_lines.append(f"file '{safe}'")
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, encoding="utf-8",
+    ) as f:
+        f.write("\n".join(list_lines) + "\n")
+        list_path = f.name
+
+    # 3) 输出文件名
+    out_name = req.output_name or f"ic_concat_{uuid.uuid4().hex[:8]}.mp4"
+    out_path = output_dir / out_name
+
+    # 4) 调用 ffmpeg concat
+    try:
+        result = await asyncio.to_thread(
+            lambda: subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", list_path,
+                    "-c", "copy",  # 流复制避免重编码
+                    str(out_path),
+                ],
+                capture_output=True, text=True, timeout=600,
+            ),
+        )
+    except FileNotFoundError:
+        try:
+            Path(list_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return ConcatVideosResponse(
+            validated=False,
+            issues=["ffmpeg 未找到，请确保将 ffmpeg 添加到系统 PATH 环境变量"],
+        )
+    except subprocess.TimeoutExpired:
+        try:
+            Path(list_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return ConcatVideosResponse(
+            validated=False, issues=["拼接超时（10 分钟）"],
+        )
+    finally:
+        try:
+            Path(list_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "")[-400:]
+        return ConcatVideosResponse(
+            validated=False,
+            issues=[f"ffmpeg 拼接失败 (code={result.returncode}): {stderr}"],
+        )
+
+    if not out_path.is_file():
+        return ConcatVideosResponse(
+            validated=False, issues=["拼接完成但输出文件丢失"],
+        )
+
+    return ConcatVideosResponse(validated=True, filename=out_name)
+
+
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload(req: UploadRequest) -> UploadResponse:
     """上传图片到 ComfyUI input/（供图生图使用）。接收 base64（可含 dataURL 前缀）。"""
@@ -585,6 +813,211 @@ async def get_result(prompt_id: str) -> dict:
         return {"prompt_id": prompt_id, "images": [], "status": "timeout"}
     except Exception as e:
         return {"prompt_id": prompt_id, "images": [], "status": "error", "message": str(e)[:200]}
+
+
+# ── v4.40 画布导出（媒体文件 ZIP 打包） ──────────────────────────
+class ExportCanvasRequest(BaseModel):
+    filenames: list[str]
+
+
+@app.post("/api/export_canvas")
+async def export_canvas(req: ExportCanvasRequest):
+    """将画布中所有节点的原始媒体文件（图片/视频）打包为 ZIP 下载。
+
+    接收 ComfyUI output 目录下的文件名列表，读取每个文件并生成 ZIP。
+    缺失文件静默跳过，在响应头 X-Missing-Count 中报告数量。
+    """
+    import zipfile
+    import io
+
+    output_dir = Path(_COMFYUI_OUTPUT_DIR)
+    if not output_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"ComfyUI 输出目录不存在: {output_dir}（请设置 COMFYUI_OUTPUT_DIR 环境变量）",
+        )
+
+    buf = io.BytesIO()
+    missing = 0
+    added = 0
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in req.filenames:
+            fp = output_dir / name
+            if not fp.is_file():
+                missing += 1
+                continue
+            # 读取文件并写入 ZIP，保留原始文件名（不添加路径前缀）
+            data = fp.read_bytes()
+            zf.writestr(name, data)
+            added += 1
+
+    if added == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"所有文件都不存在：请求 {len(req.filenames)} 个，缺失 {missing} 个",
+        )
+
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="canvas-export-{uuid.uuid4().hex[:8]}.zip"',
+            "X-Added-Count": str(added),
+            "X-Missing-Count": str(missing),
+        },
+    )
+
+
+# ── v4.50 画布实体系统（§10.1）───────────────────────────────────
+
+class CreateEntityRequest(BaseModel):
+    kind: str = Field(..., pattern="^(character|scene|prop|style)$",
+                      description="实体类型")
+    name: str = Field(..., min_length=1, max_length=128)
+    alias: str = ""
+    description: str = ""
+    prompt_override: str | None = None
+    tags: list[str] = []
+    anchor_seed: int = 0
+    anchor_lora_name: str | None = None
+    anchor_controlnet_type: str | None = None
+    parent_entity_id: str | None = None
+    metadata: dict[str, Any] = {}
+
+
+class UpdateEntityRequest(BaseModel):
+    name: str | None = None
+    alias: str | None = None
+    description: str | None = None
+    prompt_override: str | None = None
+    tags: list[str] | None = None
+    anchor_seed: int | None = None
+    anchor_first_frame_path: str | None = None
+    anchor_reference_image_path: str | None = None
+    anchor_lora_name: str | None = None
+    anchor_controlnet_type: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@app.post("/api/entities")
+async def create_entity_endpoint(req: CreateEntityRequest) -> dict:
+    """创建画布实体（角色/场景/道具/风格）。"""
+    anchor = er.VisualAnchor(
+        seed=req.anchor_seed,
+        lora_name=req.anchor_lora_name,
+        controlnet_type=req.anchor_controlnet_type,
+    )
+    ent = er.create_entity(
+        kind=er.EntityKind(req.kind),
+        name=req.name,
+        alias=req.alias,
+        description=req.description,
+        prompt_override=req.prompt_override,
+        tags=req.tags,
+        anchor=anchor,
+        parent_entity_id=req.parent_entity_id,
+        metadata=req.metadata,
+    )
+    return {"entity": _entity_to_dict(ent)}
+
+
+@app.get("/api/entities")
+async def list_entities_endpoint(kind: str | None = Query(None, pattern="^(character|scene|prop|style)$")) -> dict:
+    """列出所有实体，可选按类型过滤。"""
+    k = er.EntityKind(kind) if kind else None
+    entities = er.list_entities(kind=k)
+    return {"entities": [_entity_to_dict(e) for e in entities]}
+
+
+@app.get("/api/entities/{entity_id}")
+async def get_entity_endpoint(entity_id: str) -> dict:
+    """按 ID 获取单个实体。"""
+    ent = er.get_entity(entity_id)
+    if ent is None:
+        raise HTTPException(status_code=404, detail=f"实体 '{entity_id}' 不存在")
+    return {"entity": _entity_to_dict(ent)}
+
+
+@app.patch("/api/entities/{entity_id}")
+async def update_entity_endpoint(entity_id: str, req: UpdateEntityRequest) -> dict:
+    """部分更新实体字段。"""
+    anchor_kwargs: dict[str, Any] = {}
+    if req.anchor_seed is not None:
+        anchor_kwargs["seed"] = req.anchor_seed
+    if req.anchor_first_frame_path is not None:
+        anchor_kwargs["first_frame_path"] = req.anchor_first_frame_path
+    if req.anchor_reference_image_path is not None:
+        anchor_kwargs["reference_image_path"] = req.anchor_reference_image_path
+    if req.anchor_lora_name is not None:
+        anchor_kwargs["lora_name"] = req.anchor_lora_name
+    if req.anchor_controlnet_type is not None:
+        anchor_kwargs["controlnet_type"] = req.anchor_controlnet_type
+
+    anchor = er.VisualAnchor(**anchor_kwargs) if anchor_kwargs else None
+
+    ent = er.update_entity(
+        entity_id,
+        name=req.name,
+        alias=req.alias,
+        description=req.description,
+        prompt_override=req.prompt_override,
+        tags=req.tags,
+        anchor=anchor,
+        metadata=req.metadata,
+    )
+    if ent is None:
+        raise HTTPException(status_code=404, detail=f"实体 '{entity_id}' 不存在")
+    return {"entity": _entity_to_dict(ent)}
+
+
+@app.delete("/api/entities/{entity_id}")
+async def delete_entity_endpoint(entity_id: str) -> dict:
+    """删除实体。"""
+    if not er.delete_entity(entity_id):
+        raise HTTPException(status_code=404, detail=f"实体 '{entity_id}' 不存在")
+    return {"deleted": entity_id}
+
+
+@app.get("/api/entities/{entity_id}/prompt")
+async def get_entity_prompt(entity_id: str) -> dict:
+    """获取实体的 prompt 前缀（供工作流使用）。"""
+    prompt = er.build_entity_prompt(entity_id)
+    if prompt is None:
+        raise HTTPException(status_code=404, detail=f"实体 '{entity_id}' 不存在")
+    return {"entity_id": entity_id, "prompt": prompt}
+
+
+@app.get("/api/entities/search")
+async def search_entities_endpoint(q: str = Query(..., min_length=1)) -> dict:
+    """按名称/别名/标签模糊搜索实体。"""
+    results = er.search_entities(q)
+    return {"query": q, "entities": [_entity_to_dict(e) for e in results]}
+
+
+def _entity_to_dict(ent: er.Entity) -> dict:
+    return {
+        "entity_id": ent.entity_id,
+        "kind": ent.kind.value,
+        "name": ent.name,
+        "alias": ent.alias,
+        "description": ent.description,
+        "prompt_override": ent.prompt_override,
+        "tags": ent.tags,
+        "anchor": {
+            "seed": ent.anchor.seed,
+            "first_frame_path": ent.anchor.first_frame_path,
+            "reference_image_path": ent.anchor.reference_image_path,
+            "lora_name": ent.anchor.lora_name,
+            "controlnet_type": ent.anchor.controlnet_type,
+        },
+        "parent_entity_id": ent.parent_entity_id,
+        "children_ids": ent.children_ids,
+        "metadata": ent.metadata,
+        "created_at": ent.created_at,
+        "updated_at": ent.updated_at,
+    }
 
 
 @app.get("/health")
