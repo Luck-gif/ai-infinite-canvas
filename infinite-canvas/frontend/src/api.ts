@@ -76,6 +76,7 @@ export interface GenerateArgs {
   scene_weight?: number;         // 场景一致性：场景保持力（v4.36）
   prop_image?: string | null;    // 道具一致性：道具参考图（v4.37）
   prop_weight?: number;          // 道具一致性：道具保持力（v4.37）
+  end_image?: string | null;    // 图生视频尾帧（v5.1 img2vid）
   wait?: boolean;
 }
 

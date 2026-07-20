@@ -849,12 +849,12 @@ export function ControlPanel() {
                   type="file"
                   accept="image/*"
                   style={{ display: 'none' }}
-                  onChange={(e) => onPickEndFrameFile(e.target.files?.[0] || null)}
+                  onChange={(e) => _onPickEndFrameFile(e.target.files?.[0] || null)}
                 />
               </label>
-              {endFrameUploadPreview && (
+              {_endFrameUploadPreview && (
                 <div style={{ marginTop: 8 }}>
-                  <img src={endFrameUploadPreview} alt="尾帧预览"
+                  <img src={_endFrameUploadPreview} alt="尾帧预览"
                     style={{ width: '100%', maxHeight: 100, objectFit: 'contain', borderRadius: 6, border: `1px solid ${theme.border.subtle}` }} />
                   <div style={{ fontSize: 11, color: theme.text.hint, marginTop: 4 }}>
                     {endFrameUploadName}

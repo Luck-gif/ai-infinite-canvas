@@ -252,7 +252,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     },
 
     addTextNode: () => {
-      const state = get();
       const id = crypto.randomUUID();
       const x = 100 + Math.random() * 300;
       const y = 100 + Math.random() * 200;
@@ -274,7 +273,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
           { id: "text-out-0", label: "文本输出", direction: "output", type: "text", connectedTo: [] },
         ],
       };
-      snapshot(set, state);
+      snapshot(set, get);
       set((s) => ({ nodes: [...s.nodes, textNode], selectedId: id }));
       persist(get());
     },

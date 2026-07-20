@@ -36,15 +36,8 @@ const PORT_COLORS: Record<string, string> = {
   control: theme.accent.green,
 };
 
-/** 端口类型 → 中文标签（预留给未来端口 tooltip） */
-const _PORT_LABELS: Record<string, string> = {
-  image: '图片',
-  video: '视频',
-  text: '文本',
-  audio: '音频',
-  prompt: '提示词',
-  control: '控制',
-};
+// v5.1 端口类型 → 中文标签（预留给未来端口 tooltip）
+// const PORT_LABELS: Record<string, string> = { ... };
 
 /** v4.59 分镜状态中文标签 */
 function statusLabel(s: ShotStatus): string {
