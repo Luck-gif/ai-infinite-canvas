@@ -378,3 +378,29 @@ export interface CanvasLayer {
   locked: boolean;
   order: number;
 }
+
+// ── v4.55 模式→层级映射工具 ─────────────────────────────────────
+
+/** 根据节点 mode 推导所属画布层级 */
+export function getNodeLayer(mode?: GenMode): CanvasLayerKind {
+  switch (mode) {
+    case 'storyboard':
+      return 'planning';
+    case 'txt2vid':
+    case 'img2vid':
+      return 'output';
+    default:
+      return 'generation';
+  }
+}
+
+/** 层级→默认推荐模式 */
+export function getDefaultMode(layer: CanvasLayerKind): GenMode {
+  switch (layer) {
+    case 'planning': return 'storyboard';
+    case 'output': return 'txt2vid';
+    case 'generation':
+    default:
+      return 'txt2img';
+  }
+}
