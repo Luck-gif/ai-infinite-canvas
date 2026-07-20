@@ -745,17 +745,6 @@ export function ControlPanel() {
         <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具" />
         <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" layer="planning" />
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <SegBtn small active={p.mode === 'txt2vid'} onClick={() => setMode('txt2vid')} label="文生视频" layer="output" />
-        <SegBtn small active={p.mode === 'img2vid'} onClick={() => setMode('img2vid')} label="图生视频" layer="output" />
-        <SegBtn small active={p.mode === 'face_consistency'} onClick={() => setMode('face_consistency')} label="角色一致" />
-        <SegBtn small active={p.mode === 'image_blend'} onClick={() => setMode('image_blend')} label="图像融合" />
-        <SegBtn small active={p.mode === 'style_consistency'} onClick={() => setMode('style_consistency')} label="风格一致" />
-        <SegBtn small active={p.mode === 'scene_consistency'} onClick={() => setMode('scene_consistency')} label="场景一致" />
-        <SegBtn small active={p.mode === 'prop_consistency'} onClick={() => setMode('prop_consistency')} label="道具一致" />
-        <SegBtn small active={p.mode === 'storyboard'} onClick={() => setMode('storyboard')} label="分镜" layer="planning" />
-      </div>
-
       {/* v4.51: 层级上下文提示 */}
       <PanelHint layer={activeLayer} />
 
@@ -1265,15 +1254,16 @@ export function ControlPanel() {
           </div>
         </div>
       )}
-      <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
-        {loading
-          ? (phase || '处理中…')
-          : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : p.mode === 'prop_consistency' ? '道具一致 ▶' : p.mode === 'storyboard' ? '分镜生成 ▶' : '生成 ▶'}
-      </button>
+      <div style={{ position: 'sticky', bottom: -16, margin: '16px -16px -16px', padding: 12, background: theme.bg.panel, borderTop: `1px solid ${theme.border.default}` }}>
+        <button onClick={run} disabled={loading} style={genBtnStyle(loading)}>
+          {loading
+            ? (phase || '处理中…')
+            : p.mode === 'outpaint' ? '扩图 ▶' : p.mode === 'inpaint' ? '局部重绘 ▶' : p.mode === 'img2img' ? '图生图 ▶' : p.mode === 'face_consistency' ? '角色一致 ▶' : p.mode === 'image_blend' ? '图像融合 ▶' : p.mode === 'style_consistency' ? '风格一致 ▶' : p.mode === 'scene_consistency' ? '场景一致 ▶' : p.mode === 'prop_consistency' ? '道具一致 ▶' : p.mode === 'storyboard' ? '分镜生成 ▶' : '生成 ▶'}
+        </button>
 
       {/* v4.29: 实时进度条 */}
       {loading && progress && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11, color: theme.text.dim, marginBottom: 4 }}>{progress.phase}</div>
           <div style={{ height: 4, borderRadius: 2, background: 'rgba(79,140,255,0.15)', overflow: 'hidden' }}>
             <div
@@ -1291,6 +1281,7 @@ export function ControlPanel() {
           </div>
         </div>
       )}
+      </div>
 
       {error && <div style={errStyle}>{error}</div>}
 
@@ -1809,7 +1800,7 @@ function genBtnStyle(loading: boolean): React.CSSProperties {
     width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
     background: loading ? theme.accent.night : 'linear-gradient(90deg, #4f8cff, #8b5cf6)', color: '#fff',
     fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer',
-    marginTop: 'auto', boxShadow: '0 4px 14px rgba(79,140,255,0.25)',
+    boxShadow: '0 4px 14px rgba(79,140,255,0.25)',
     transition: 'transform 0.1s ease, box-shadow 0.2s ease',
   };
 }

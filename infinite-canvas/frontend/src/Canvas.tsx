@@ -665,6 +665,34 @@ export function Canvas() {
           }}
         />
       )}
+
+      {/* 空画布引导 */}
+      {nodes.length === 0 && (
+        <div
+          style={{
+            position: 'absolute', left: '50%', top: '45%', transform: 'translate(-50%, -50%)',
+            textAlign: 'center', pointerEvents: 'none', userSelect: 'none', zIndex: 30,
+            maxWidth: 420,
+          }}
+        >
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(79,140,255,0.15), rgba(139,92,246,0.15))',
+            border: '1px solid rgba(79,140,255,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 16px', fontSize: 32,
+          }}>
+            🎨
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: theme.text.primary, marginBottom: 8 }}>
+            画布为空
+          </div>
+          <div style={{ fontSize: 13, color: theme.text.secondary, lineHeight: 1.7 }}>
+            在左侧输入描述并点击「生成」，或点击上方「工作流生成」「分镜规划」快速开始。<br />
+            生成结果会自动出现在画布上，支持拖拽、连线与批量管理。
+          </div>
+        </div>
+      )}
     </div>
   );
 }
