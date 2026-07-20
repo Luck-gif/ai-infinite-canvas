@@ -139,6 +139,10 @@ interface CanvasState {
   toggleLayerVisibility: (id: string) => void;
   /** 切换层级锁定 */
   toggleLayerLock: (id: string) => void;
+  /** v4.52 加载分镜到画布（清空当前后自动布局+连线） */
+  loadStoryboardToCanvas: (shots: Array<{ shot_id: string; shot_index: number; prompt: string; node_count: number }>) => void;
+  /** v4.52 画布导出 JSON */
+  exportCanvas: () => string;
 }
 
 /** v4.50 三层画布默认配置 */
@@ -361,6 +365,62 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
           l.id === id ? { ...l, locked: !l.locked } : l,
         ),
       }));
+    },
+
+    // ── v4.52 分镜→画布 ──────────────────────────────────────────
+    loadStoryboardToCanvas: (shots) => {
+      const COLS = 3;
+      const GAP_X = 360;
+      const GAP_Y = 300;
+      const START_X = 100;
+      const START_Y = 80;
+
+      const newNodes: CanvasNode[] = shots.map((shot, i) => ({
+        id: `sb-${shot.shot_id}`,
+        filename: '',
+        prompt: shot.prompt,
+        templateId: 'storyboard',
+        x: START_X + (i % COLS) * GAP_X,
+        y: START_Y + Math.floor(i / COLS) * GAP_Y,
+        width: 320,
+        height: 240,
+        kind: 'image',
+        mode: 'storyboard',
+        seed: undefined,
+        createdAt: Date.now(),
+      }));
+
+      // 清除当前节点后加载 + 建立顺序连线
+      const links: { from: string; to: string }[] = [];
+      for (let i = 0; i < newNodes.length - 1; i++) {
+        links.push({ from: newNodes[i].id, to: newNodes[i + 1].id });
+      }
+
+      set((s) => {
+        const newLinks = [...s.links];
+        links.forEach((l) => {
+          const key = `${l.from}->${l.to}`;
+          if (!newLinks.some((ex) => ex.id === key)) {
+            newLinks.push({ id: key, from: l.from, to: l.to });
+          }
+        });
+        return { nodes: newNodes, links: newLinks, selectedId: null, activeLayer: 'planning' as const };
+      });
+
+      // 记录历史
+      pushUndo();
+    },
+
+    exportCanvas: () => {
+      const s = get();
+      return JSON.stringify({
+        nodes: s.nodes,
+        links: s.links,
+        layers: s.layers,
+        activeLayer: s.activeLayer,
+        version: '4.52',
+        exportedAt: new Date().toISOString(),
+      }, null, 2);
     },
   };
 });

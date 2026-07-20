@@ -14,6 +14,8 @@ interface Props {
 export function StoryboardPanel({ onClose }: Props) {
   const setWfOpen = useCanvasStore((s) => s.setWfOpen);
   const setLiveWorkflow = useCanvasStore((s) => s.setLiveWorkflow);
+  // v4.52: 分镜→画布集成
+  const loadStoryboardToCanvas = useCanvasStore((s) => s.loadStoryboardToCanvas);
 
   // 表单
   const [description, setDescription] = useState('');
@@ -250,8 +252,25 @@ export function StoryboardPanel({ onClose }: Props) {
         {/* 分镜结果列表 */}
         {result && result.shots.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: theme.text.primary, borderTop: `1px solid ${theme.border.subtle}`, paddingTop: 10 }}>
-              分镜列表 (storyboard_id: {result.storyboard_id})
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${theme.border.subtle}`, paddingTop: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: theme.text.primary }}>
+                分镜列表 (storyboard_id: {result.storyboard_id})
+              </span>
+              <button
+                onClick={() => {
+                  loadStoryboardToCanvas(result.shots);
+                  toastChannel.push('success', `${result.shots.length} 个分镜已加载到画布（策划层）`);
+                }}
+                style={{
+                  ...commonBtn,
+                  background: '#2a1f10',
+                  borderColor: '#f0a030',
+                  color: '#f0a030',
+                  fontSize: 11,
+                  padding: '3px 10px',
+                }}
+                title="将分镜序列加载到策划层画布，自动布局并连线"
+              >📋 加载到画布</button>
             </div>
             {result.shots.map((shot, idx) => (
               <div
