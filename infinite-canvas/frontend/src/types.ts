@@ -99,6 +99,9 @@ export interface CanvasNode {
   controlModel?: string;         // ControlNet 模型文件名（含 .safetensors，v4.23）
   controlImage?: string;         // ControlNet 控制图文件名（v4.23，缺省=目标图）
   workflowGraph?: WorkflowGraph | null; // 该节点由哪个工作流生成（可「查看工作流」）
+  // ── v5.3 基础审核（#19）──
+  qualityStatus?: NodeQualityStatus; // 质量审核标记
+  qualityNote?: string;              // 质量注释（驳回原因）
   // ── v4.57 故事板分镜字段 ──
   shotIndex?: number;              // 分镜序号
   shotId?: string;                 // 故事板剧集 shot id
@@ -446,6 +449,34 @@ export interface BatchStoryboardRequest {
   steps?: number;
   cfg?: number;
   seed?: number;
+}
+
+// ── v5.3 基础审核（#19）──
+
+/** 节点质量审核状态 */
+export type NodeQualityStatus = 'unreviewed' | 'approved' | 'rejected' | 'needs_regeneration';
+
+/** /api/review/quality 请求 */
+export interface QualityMarkRequest {
+  node_id: string;
+  status: NodeQualityStatus;
+  note?: string;
+}
+
+/** /api/review/batch-quality 请求 */
+export interface BatchQualityMarkRequest {
+  node_ids: string[];
+  status: NodeQualityStatus;
+  note?: string;
+}
+
+/** 节点审核统计 */
+export interface QualityStats {
+  total: number;
+  unreviewed: number;
+  approved: number;
+  rejected: number;
+  needs_regeneration: number;
 }
 
 // ── v4.55 模式→层级映射工具 ─────────────────────────────────────

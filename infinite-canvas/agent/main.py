@@ -387,6 +387,62 @@ async def ip_library() -> dict:
     return ip_library_status()
 
 
+# ── v5.3 基础审核（#19）· 节点质量标记 ──────────────────────────
+
+# 内存中的节点质量标记（生产环境应持久化到数据库）
+_node_quality_store: dict[str, dict[str, str]] = {}
+
+
+class QualityMarkRequest(BaseModel):
+    node_id: str
+    status: str = "approved"  # approved | rejected | needs_regeneration | unreviewed
+    note: str | None = None
+
+
+class BatchQualityMarkRequest(BaseModel):
+    node_ids: list[str] = Field(..., min_length=1, max_length=200)
+    status: str = "approved"
+    note: str | None = None
+
+
+@app.post("/api/review/quality")
+async def quality_mark(req: QualityMarkRequest) -> dict:
+    """标记单个画布节点的质量审核状态（v5.3 #19）。"""
+    valid_statuses = {"approved", "rejected", "needs_regeneration", "unreviewed"}
+    if req.status not in valid_statuses:
+        return {"validated": False, "error": f"无效状态：{req.status}，可用值：{valid_statuses}"}
+    _node_quality_store[req.node_id] = {
+        "status": req.status,
+        "note": req.note or "",
+    }
+    return {"validated": True, "node_id": req.node_id, "status": req.status}
+
+
+@app.post("/api/review/batch-quality")
+async def batch_quality_mark(req: BatchQualityMarkRequest) -> dict:
+    """批量标记节点质量审核状态（v5.3 #19）。"""
+    valid_statuses = {"approved", "rejected", "needs_regeneration", "unreviewed"}
+    if req.status not in valid_statuses:
+        return {"validated": False, "error": f"无效状态：{req.status}"}
+    for nid in req.node_ids:
+        _node_quality_store[nid] = {
+            "status": req.status,
+            "note": req.note or "",
+        }
+    return {"validated": True, "count": len(req.node_ids)}
+
+
+@app.get("/api/review/quality-stats")
+async def quality_stats() -> dict:
+    """获取审核统计（v5.3 #19）。"""
+    stats = {"total": 0, "unreviewed": 0, "approved": 0, "rejected": 0, "needs_regeneration": 0}
+    for v in _node_quality_store.values():
+        s = v.get("status", "unreviewed")
+        stats["total"] += 1
+        stats[s] = stats.get(s, 0) + 1
+    return stats
+
+
 # ── v4.39 视频拼接 ─────────────────────────────────────────────
 _COMFYUI_OUTPUT_DIR = os.environ.get(
     "COMFYUI_OUTPUT_DIR",

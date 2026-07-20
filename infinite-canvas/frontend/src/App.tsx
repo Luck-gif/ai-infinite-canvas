@@ -334,6 +334,23 @@ export function App() {
             )}
           </div>
           <ToolBtn onClick={importJSON} label="导入" title="导入存档 JSON" />
+          {/* v5.3 审核过滤器 */}
+          <select
+            value={useCanvasStore((s) => s.qualityFilter) || 'all'}
+            onChange={(e) => useCanvasStore.getState().setQualityFilter(e.target.value)}
+            style={{
+              padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.06)', color: '#e2e8f0', fontSize: 12,
+              cursor: 'pointer', minWidth: 80,
+            }}
+            title="v5.3 按审核状态过滤画布节点"
+          >
+            <option value="all">🟢 全部</option>
+            <option value="approved">✅ 已通过</option>
+            <option value="rejected">❌ 已驳回</option>
+            <option value="needs_regeneration">🔄 需重生成</option>
+            <option value="unreviewed">⏳ 待审核</option>
+          </select>
           <ToolBtn onClick={handleClear} label="清空" danger title="清空画布（可撤销）" />
         </div>
       </header>

@@ -476,3 +476,27 @@ export async function ipLibraryStatus(): Promise<{ total_entities: number; embed
   if (!res.ok) throw new Error(`ip library status failed: ${res.status}`);
   return res.json() as Promise<{ total_entities: number; embedding_dim: number; entity_ids: string[]; index_file: string }>;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// v5.3 基础审核 · 节点质量标记
+// ═══════════════════════════════════════════════════════════════
+
+export async function markNodeQuality(nodeId: string, status: string, note?: string): Promise<{ validated: boolean; node_id: string; status: string }> {
+  const res = await fetch(`${BASE}/api/review/quality`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId, status, note }),
+  });
+  if (!res.ok) throw new Error(`quality mark failed: ${res.status}`);
+  return res.json() as Promise<{ validated: boolean; node_id: string; status: string }>;
+}
+
+export async function batchMarkQuality(nodeIds: string[], status: string, note?: string): Promise<{ validated: boolean; count: number }> {
+  const res = await fetch(`${BASE}/api/review/batch-quality`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_ids: nodeIds, status, note }),
+  });
+  if (!res.ok) throw new Error(`batch quality mark failed: ${res.status}`);
+  return res.json() as Promise<{ validated: boolean; count: number }>;
+}

@@ -1,6 +1,6 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
-import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus } from './types';
+import type { CanvasNode, Link, WorkflowGraph, TimelineClip, CanvasLayer, CanvasLayerKind, StoryboardTimelineShot, ShotStatus, NodeQualityStatus } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
@@ -163,8 +163,18 @@ interface CanvasState {
     setStoryboardBatchBusy: (busy: boolean) => void;
     /** 为分镜绑定实体资产 */
     bindAssetToShot: (nodeId: string, entityId: string) => void;
-    /** 为分镜解绑实体资产 */
-    unbindAssetFromShot: (nodeId: string, entityId: string) => void;
+  /** 为分镜解绑实体资产 */
+  unbindAssetFromShot: (nodeId: string, entityId: string) => void;
+
+  // ── v5.3 基础审核（#19）─────────────────────────────────────────
+  /** 质量审核过滤器 */
+  qualityFilter: string;
+  /** 设置审核过滤器 */
+  setQualityFilter: (filter: string) => void;
+  /** 给单个节点打审核标记 */
+  markNodeQuality: (nodeId: string, status: string, note?: string) => void;
+  /** 批量打审核标记 */
+  batchMarkQuality: (nodeIds: string[], status: string, note?: string) => void;
   }
 
 /** v4.50 三层画布默认配置 */
@@ -544,6 +554,41 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
         });
         return { storyboardShots: shots, nodes };
       });
+      persist(get());
+    },
+
+    // ── v5.3 基础审核（#19）──────────────────────────────────────────
+    /** 质量审核过滤器 */
+    qualityFilter: 'all' as const,
+    /** 设置审核过滤器 */
+    setQualityFilter: (filter: 'all' | string) => set({ qualityFilter: filter }),
+    /** 给单个节点打审核标记 */
+    markNodeQuality: (nodeId: string, status: string, note?: string) => {
+      set((s) => ({
+        nodes: s.nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          return {
+            ...n,
+            qualityStatus: status as NodeQualityStatus,
+            qualityNote: note ?? undefined,
+          };
+        }),
+      }));
+      persist(get());
+    },
+    /** 批量打审核标记 */
+    batchMarkQuality: (nodeIds: string[], status: string, note?: string) => {
+      const idSet = new Set(nodeIds);
+      set((s) => ({
+        nodes: s.nodes.map((n) => {
+          if (!idSet.has(n.id)) return n;
+          return {
+            ...n,
+            qualityStatus: status as NodeQualityStatus,
+            qualityNote: note ?? undefined,
+          };
+        }),
+      }));
       persist(get());
     },
   };

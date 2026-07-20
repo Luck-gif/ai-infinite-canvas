@@ -85,6 +85,7 @@ export function NodeEditPanel() {
   const clearSelection = useCanvasStore((s) => s.clearSelection);
   const setWfOpen = useCanvasStore((s) => s.setWfOpen);
   const setLiveWorkflow = useCanvasStore((s) => s.setLiveWorkflow);
+  const markNodeQuality = useCanvasStore((s) => s.markNodeQuality);  // v5.3
 
   const node = nodes.find((n) => n.id === selectedId);
   const [prompt, setPrompt] = useState('');
@@ -280,6 +281,27 @@ export function NodeEditPanel() {
           </pre>
         </details>
       )}
+
+      {/* v5.3 审核标记 */}
+      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+        <span style={{ fontSize: 11, color: theme.text.hint, lineHeight: '24px' }}>审核:</span>
+        {[
+          { s: 'approved', l: '✅ 通过' },
+          { s: 'rejected', l: '❌ 驳回' },
+          { s: 'needs_regeneration', l: '🔄 重生成' },
+        ].map(({ s, l }) => (
+          <button key={s} onClick={() => { if (node) markNodeQuality(node.id, s); }}
+            style={{
+              flex: 1, padding: '3px 0', borderRadius: 4, border: 'none',
+              cursor: 'pointer', fontSize: 11,
+              background: node?.qualityStatus === s ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.05)',
+              color: node?.qualityStatus === s ? theme.accent.blue : theme.text.hint,
+            }}>{l}</button>
+        ))}
+        <span style={{ fontSize: 10, color: theme.text.tiny, lineHeight: '24px', minWidth: 50 }}>
+          {node?.qualityStatus ? `[${node.qualityStatus}]` : '[未标记]'}
+        </span>
+      </div>
 
       {/* 底部提示 */}
       <div style={{ fontSize: 10, color: theme.text.tiny, marginTop: 4 }}>

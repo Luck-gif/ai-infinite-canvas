@@ -54,7 +54,14 @@
   - `check_ip_similarity()` 三级预警（通过/轻度偏离/严重偏离）
   - `/api/guard/ip-check` + `/api/guard/ip-register` + `/api/guard/ip-library` 端点
   - 21 个新 pytest（含嵌入提取/一致性审查/IP预警）
-- [ ] **#19 基础审核** — 节点质量标记 + 批量浏览模式
+- [x] **#19 基础审核** — 节点质量标记 + 批量浏览 ✅ 2026-07-20
+  - `NodeQualityStatus`: unreviewed | approved | rejected | needs_regeneration
+  - `/api/review/quality` 单节点标记 + `/api/review/batch-quality` 批量标记
+  - `/api/review/quality-stats` 审核统计端点
+  - CanvasNode → qualityStatus/qualityNote 字段
+  - store → qualityFilter 过滤器 + markNodeQuality/batchMarkQuality
+  - App.tsx: 顶部工具栏审核状态下拉过滤
+  - NodeEditPanel: 审核快捷按钮（✅通过/❌驳回/🔄重生成）
 
 ---
 
@@ -87,14 +94,14 @@ GET  /api/health              健康检查
 
 ### 测试
 ```
-258 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v + 19 regional + 21 embedding) — 全绿
+258 pytest — 全绿
 TypeScript: tsc 0 error
 ```
 
 ### 进度
 ```
-P0: 6/6 ✅  P1: 7/7 ✅  P2: 4/5
-总版本: v5.2
+P0: 6/6 ✅  P1: 7/7 ✅  P2: 5/5 ✅  🎉
+总版本: v5.3 · P0/P1/P2 全部完成！
 ```
 
 ### 新增模块（v4.50-v5.1）
@@ -109,6 +116,8 @@ lightx2v_blueprints.py     — LightX2V 4步/2步蒸馏蓝图 (v5.0)
 sage_attention.py          — SageAttention 量化加速配置 (v5.0)
 regional_pipeline.py       — 多角色同框 Regional Sampler (v5.1)
 embedding_service.py        — CLIP 嵌入服务 + 一致性审查 + IP 预警 (v5.2)
++ 审核 API 端点             — quality/batch-quality/quality-stats (v5.3)
++ 质量过滤 UI               — App.tsx 下拉 + NodeEditPanel 标记 (v5.3)
 LayerPanel.tsx              — 三层画布切换
 WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板
