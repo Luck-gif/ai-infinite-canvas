@@ -6,6 +6,8 @@ import { ControlPanel } from './ControlPanel';
 import { WorkflowPanel } from './WorkflowPanel';
 import Timeline from './Timeline';
 import { WorkflowLibrary } from './WorkflowLibrary';
+import { WorkflowGeneratePanel } from './WorkflowGeneratePanel';
+import { StoryboardPanel } from './StoryboardPanel';
 import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
 import { exportCanvasZip, getStatus } from './api';
@@ -43,6 +45,8 @@ export function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [wfLibOpen, setWfLibOpen] = useState(false);
+  const [wfGenOpen, setWfGenOpen] = useState(false);
+  const [storyboardOpen, setStoryboardOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── v4.42 工作流库回调 ──────────────────────────────────────────
@@ -204,7 +208,7 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, userSelect: 'none' }}>无限画布</span>
-        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.42</span>
+        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.50</span>
 
         {/* 状态指示器 */}
         <span
@@ -244,6 +248,8 @@ export function App() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <ToolBtn onClick={() => setWfOpen(!wfOpen)} label="工作流" title={wfOpen ? '收起工作流面板' : '展开工作流面板'} />
           <ToolBtn onClick={() => setTimelineOpen(!timelineOpen)} label="时间轴" title={timelineOpen ? '收起时间轴' : '展开视频时间轴'} />
+          <ToolBtn onClick={() => setWfGenOpen(!wfGenOpen)} label="工作流生成" accent title="v4.50 NL→工作流自动组装" />
+          <ToolBtn onClick={() => setStoryboardOpen(!storyboardOpen)} label="分镜规划" accent title="v4.50 多分镜规划与批量组装" />
           <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON / GPT 创建" />
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />
@@ -343,11 +349,28 @@ export function App() {
           onGptGraph={handleGptGraph}
         />
       )}
+
+      {/* v4.50 工作流生成面板 */}
+      {wfGenOpen && (
+        <WorkflowGeneratePanel
+          onClose={() => setWfGenOpen(false)}
+        />
+      )}
+
+      {/* v4.50 分镜规划面板 */}
+      {storyboardOpen && (
+        <StoryboardPanel
+          onClose={() => setStoryboardOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
-function ToolBtn({ onClick, label, danger, title }: { onClick: () => void; label: string; danger?: boolean; title?: string }) {
+function ToolBtn({ onClick, label, danger, accent, title }: { onClick: () => void; label: string; danger?: boolean; accent?: boolean; title?: string }) {
+  const accentBg = accent ? '#162040' : danger ? theme.danger.bg : theme.bg.card;
+  const accentBorder = accent ? '#4f8cff' : theme.border.card;
+  const accentColor = accent ? theme.accent.blue : danger ? theme.danger.text : theme.text.tertiary;
   return (
     <button
       onClick={onClick}
@@ -355,19 +378,19 @@ function ToolBtn({ onClick, label, danger, title }: { onClick: () => void; label
       style={{
         padding: '6px 12px',
         borderRadius: 6,
-        border: `1px solid ${theme.border.card}`,
-        background: danger ? theme.danger.bg : theme.bg.card,
-        color: danger ? theme.danger.text : theme.text.tertiary,
+        border: `1px solid ${accentBorder}`,
+        background: accentBg,
+        color: accentColor,
         fontSize: 12,
         cursor: 'pointer',
         whiteSpace: 'nowrap',
         transition: 'border-color 0.15s, background 0.15s',
       }}
       onMouseEnter={(e) => {
-        (e.target as HTMLButtonElement).style.borderColor = danger ? '#cc4444' : '#4f8cff';
+        (e.target as HTMLButtonElement).style.borderColor = danger ? '#cc4444' : accent ? '#6db3ff' : '#4f8cff';
       }}
       onMouseLeave={(e) => {
-        (e.target as HTMLButtonElement).style.borderColor = theme.border.card;
+        (e.target as HTMLButtonElement).style.borderColor = accentBorder;
       }}
     >
       {label}
