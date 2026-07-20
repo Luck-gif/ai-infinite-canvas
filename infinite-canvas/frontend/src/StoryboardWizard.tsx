@@ -1,7 +1,7 @@
 // v5.6 故事板引导式工作流 — 4步向导
 // 剧本 → 角色/场景 → 分镜 → 批量生成
 import { useCallback, useRef, useState } from 'react';
-import { extractNarrative, planStoryboard } from './api';
+import { extractNarrative, generateStoryboard } from './api';
 import type { NarrateResponse, NarrateCharacter, NarrateScene, NarrateShot, WizardStep } from './types';
 import { theme } from './theme';
 import { useCanvasStore } from './store';
@@ -39,6 +39,7 @@ export function StoryboardWizard({ onClose }: Props) {
 
   // Store
   const loadStoryboardToCanvas = useCanvasStore((s) => s.loadStoryboardToCanvas);
+  const updateNode = useCanvasStore((s) => s.updateNode);
 
   // 拖拽位置
   const panelRef = useRef<HTMLDivElement>(null);
@@ -83,32 +84,55 @@ export function StoryboardWizard({ onClose }: Props) {
     setShots((prev) => prev.map((sh, i) => (i === idx ? { ...sh, [field]: value } : sh)));
   };
 
-  // ── 步骤5: 提交 storyboard 生成 ──
+  // ── 步骤5: 提交 ComfyUI 实际生成图片 ──
   const handleGenerate = useCallback(async () => {
+    if (shots.length === 0) {
+      toastChannel.push('warning', '没有可生成的分镜');
+      return;
+    }
+
     setBusy(true);
     setStep('generate');
     setProgress({ current: 0, total: shots.length });
 
     try {
-      const res = await planStoryboard({
-        description: shots.map((s) => s.prompt).join('\n'),
-        num_shots: shots.length,
-        style: genParams.style,
-        characters: characters.filter((c) => c.name).map((c) => c.name),
+      // 1. 用叙事提取的原始单条 English prompts 创建画布节点
+      //    （不用 plan 返回的模板填充结果，避免所有分镜共用拼接描述）
+      const canvasShots = shots.map((s, i) => ({
+        shot_id: s.shot_id,
+        shot_index: i,
+        prompt: s.prompt,
+        node_count: 0,
+      }));
+      loadStoryboardToCanvas(canvasShots);
+
+      // 2. 提交到 ComfyUI 实际生成图片（/api/storyboard 会构建 txt2img 工作流并等待结果）
+      const result = await generateStoryboard({
+        prompts: shots.map((s) => s.prompt),
+        width: genParams.width,
+        height: genParams.height,
+        steps: genParams.steps,
       });
 
-      setProgress({ current: res.total_shots, total: res.total_shots });
-
-      if (res.shots.length > 0) {
-        loadStoryboardToCanvas(res.shots);
-        toastChannel.push('success', `已生成 ${res.total_shots} 个分镜到画布`);
+      // 3. 把生成的图片文件名写回画布节点
+      if (result.frames) {
+        result.frames.forEach((frame) => {
+          const shot = canvasShots[frame.index];
+          if (shot && frame.image) {
+            updateNode(`sb-${shot.shot_id}`, { filename: frame.image, shotStatus: 'done' });
+          }
+        });
       }
+
+      const generated = result.frames ? result.frames.length : 0;
+      setProgress({ current: generated, total: shots.length });
+      toastChannel.push('success', `已生成 ${generated}/${shots.length} 个分镜到画布`);
     } catch (e: any) {
       toastChannel.push('error', `生成失败: ${e?.message || '未知错误'}`);
     } finally {
       setBusy(false);
     }
-  }, [shots, genParams, characters, loadStoryboardToCanvas]);
+  }, [shots, genParams, loadStoryboardToCanvas, updateNode]);
 
   // ── 拖拽 ──
   const handleMouseDown = (e: React.MouseEvent) => {
