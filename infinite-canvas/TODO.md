@@ -8,13 +8,15 @@
 
 ## 🔴 P0 — v4.50 后端增强（48h 内，硬件升级前）
 
-- [ ] **#1 创建 `entity_registry.py`** — 角色/场景/道具/风格结构化注册表（JSON Schema）
-- [ ] **#2 新增 `/api/entities/*` CRUD** — 创建/读取/更新/删除实体
-- [ ] **#3 创建 `consistency_manager.py`** — StoryDiffusion 17 合 1 封装，按场景路由
-- [ ] **#4 创建 `workflow_planner.py`** — LLM 辅助工作流规划（蓝图匹配+DAG构造）
-- [ ] **#5 创建 `workflow_assembler.py`** — 蓝图参数填入+一致性策略自动注入+量化匹配
-- [ ] **#6 新增 `/api/workflows/generate`** — 自然语言→完整 ComfyUI JSON 端点
-- [ ] **#7 创建 `video_blueprints.py`** — WanVideoWrapper + LTXVideo 蓝图封装
+- [x] **#1 创建 `entity_registry.py`** — 角色/场景/道具/风格结构化注册表（JSON Schema）✅ 2026-07-20
+- [x] **#2 新增 `/api/entities/*` CRUD** — 创建/读取/更新/删除实体 ✅ 2026-07-20
+- [x] **#3 创建 `consistency_manager.py`** — StoryDiffusion 17 合 1 封装，按场景路由 ✅ 2026-07-20
+- [x] **#4 创建 `workflow_planner.py`** — LLM 辅助工作流规划（蓝图匹配+DAG构造）✅ 2026-07-20
+- [x] **#5 创建 `workflow_assembler.py`** — 蓝图参数填入+一致性策略自动注入+量化匹配 ✅ 2026-07-20
+- [x] **#6 新增 `/api/workflows/generate` + `/api/storyboard/plan` + `/api/blueprints`** — 三个新端点 ✅ 2026-07-20
+- [x] **#7 创建 `video_blueprints.py`** — Wan2.2 T2V/I2V (fp8/GGUF) + LTX 蓝图封装 ✅ 2026-07-20
+
+✅ **v4.50 后端已完成！** 全部 7 项 P0 已交付（135 测试全绿）。
 
 ## 🟡 P1 — v5.0 前端三层画布（硬件升级后 3-5 天）
 

@@ -5,8 +5,9 @@ import intent_map as im
 import comfy_client as cc
 
 # 引入 validator（.codebuddy/skills 目录在项目根）
-_AGENT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_PROJECT_ROOT = os.path.dirname(_AGENT_DIR)
+_SELF_DIR = os.path.dirname(os.path.abspath(__file__))
+# tests/integration → tests → agent → infinite-canvas → 无限画布（项目根）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_SELF_DIR))))
 SKILL_DIR = os.path.join(_PROJECT_ROOT, ".codebuddy", "skills", "comfyui-workflow-validator")
 sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
 import validate_workflow as vw  # type: ignore[import-not-found]

@@ -12,6 +12,11 @@ import type {
   WorkflowLibraryData,
   GptWorkflowRequest,
   GptWorkflowResponse,
+  WorkflowGenerateRequest,
+  WorkflowGenerateResponse,
+  StoryboardPlanRequest,
+  StoryboardPlanResponse,
+  BlueprintListResponse,
 } from './types';
 
 const BASE = '/api';
@@ -224,4 +229,21 @@ export async function deleteWorkflow(name: string): Promise<void> {
 /** GPT 辅助：从自然语言描述生成 ComfyUI 工作流 JSON */
 export async function gptCreateWorkflow(req: GptWorkflowRequest): Promise<GptWorkflowResponse> {
   return postJSON<GptWorkflowResponse>(`${BASE}/workflows/gpt`, req);
+}
+
+/** v4.50 自然语言→组装→校验→完整ComfyUI JSON（新管线） */
+export async function generateWorkflow(req: WorkflowGenerateRequest): Promise<WorkflowGenerateResponse> {
+  return postJSON<WorkflowGenerateResponse>(`${BASE}/workflows/generate`, req);
+}
+
+/** v4.50 故事板规划→多分镜组装 */
+export async function planStoryboard(req: StoryboardPlanRequest): Promise<StoryboardPlanResponse> {
+  return postJSON<StoryboardPlanResponse>(`${BASE}/storyboard/plan`, req);
+}
+
+/** v4.50 蓝图库查询 */
+export async function listBlueprints(): Promise<BlueprintListResponse> {
+  const res = await fetch(`${BASE}/blueprints`);
+  if (!res.ok) throw new Error(`[${res.status}] blueprints`);
+  return res.json() as Promise<BlueprintListResponse>;
 }

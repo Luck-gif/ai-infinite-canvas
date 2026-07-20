@@ -55,6 +55,8 @@ import comfy_client as cc
 import deepseek as ds
 import entity_registry as er
 import intent_map as im
+import workflow_assembler as wa
+import video_blueprints as vb
 
 app = FastAPI(title="Infinite Canvas Agent", version="0.3.0")
 
@@ -340,6 +342,30 @@ class GptWorkflowRequest(BaseModel):
     description: str
 
 
+# ── v4.50 工作流生成（自然语言→完整 ComfyUI JSON）────────────────
+class WorkflowGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, description="自然语言描述（分镜/故事板描述）")
+    blueprint: str = Field("txt2img_sdxl", description="图像蓝图 ID")
+    image_blueprint: str = Field("txt2img_sdxl", description="图像蓝图 ID（兼容旧参数名）")
+    video_blueprint: str | None = Field(None, description="视频蓝图 ID（可选，None=不生成视频）")
+    consistency_mode: str = Field("auto", description="一致性模式: auto/character/scene/style")
+    width: int = Field(1024, ge=64, le=4096)
+    height: int = Field(1024, ge=64, le=4096)
+    steps: int = Field(20, ge=1, le=100)
+    cfg: float = Field(7.0, ge=1.0, le=30.0)
+    negative: str = ""
+    submit: bool = Field(False, description="是否直接提交 ComfyUI 执行（否则仅返回 JSON）")
+
+
+class StoryboardPlanRequest(BaseModel):
+    description: str = Field(..., min_length=1, description="剧情/故事板描述")
+    num_shots: int = Field(4, ge=1, le=36, description="期望分镜数")
+    style: str = Field("", description="画风描述")
+    characters: list[str] = Field([], description="角色名称列表")
+    blueprint: str = Field("txt2img_sdxl", description="图像蓝图 ID")
+    video_blueprint: str | None = Field(None, description="视频蓝图 ID（可选）")
+
+
 @app.post("/api/workflows/save")
 async def save_workflow(req: SaveWorkflowRequest) -> dict:
     """保存自定义 ComfyUI 工作流 JSON。"""
@@ -422,6 +448,163 @@ async def gpt_create_workflow(req: GptWorkflowRequest) -> dict:
         "workflow_json": wf,
         "workflow_graph": graph,
     }
+
+
+# ── v4.50 工作流生成（自然语言→组装→校验→可选提交）──────────────
+@app.post("/api/workflows/generate")
+async def generate_workflow(req: WorkflowGenerateRequest) -> dict:
+    """自然语言描述 → 完整 ComfyUI 工作流 JSON。
+
+    流程（§3.2 工作流引擎 Phase 1-4）：
+    1. DeepSeek v4 意图解析（已有）
+    2. 一致性策略推荐（consistency_manager）
+    3. 蓝图组装（workflow_assembler）
+    4. 节点校验（comfy_client validator）
+    5. 可选：提交 ComfyUI 执行（submit=True）
+    """
+    # Phase 1: 意图解析
+    intent = await asyncio.to_thread(ds.parse_intent, req.prompt)
+
+    # Phase 2-3: 组装工作流（使用 v4.50 新 pipeline）
+    entities_dict = await asyncio.to_thread(er.load_all_entities)
+    bp = req.blueprint or req.image_blueprint
+    result = await asyncio.to_thread(
+        wa.assemble_single,
+        prompt=req.prompt,
+        entities=entities_dict,
+        image_blueprint=bp,
+        consistency_mode=req.consistency_mode,
+        width=req.width,
+        height=req.height,
+        steps=req.steps,
+        cfg=req.cfg,
+        negative=req.negative,
+    )
+
+    workflow_nodes = result["workflow"]
+
+    # Phase 4: 校验
+    validation = await asyncio.to_thread(cc.validate_workflow, workflow_nodes)
+
+    # 生成工作流图（前端可视化）
+    graph = cc.workflow_to_graph(workflow_nodes)
+
+    response_data: dict[str, Any] = {
+        "validated": validation.get("valid", True),
+        "issues": validation.get("issues", []),
+        "node_count": len(workflow_nodes),
+        "shot_id": result["shot_id"],
+        "prompt_engineered": result["prompt"],
+        "consistency_mode": result["mode"],
+        "entities_used": result.get("entities_used", []),
+        "intent": intent,
+        "workflow_json": wa.workflow_to_prompt_json(workflow_nodes),
+        "workflow_graph": graph,
+    }
+
+    # Phase 5: 可选提交执行
+    if req.submit:
+        try:
+            prompt_json = wa.workflow_to_prompt_json(workflow_nodes)
+            prompt_id = cc.submit_prompt(prompt_json)
+            response_data["prompt_id"] = prompt_id
+            response_data["submitted"] = True
+        except Exception as e:
+            response_data["submitted"] = False
+            response_data["submit_error"] = str(e)
+
+    return response_data
+
+
+@app.post("/api/storyboard/plan")
+async def plan_storyboard(req: StoryboardPlanRequest) -> dict:
+    """自动故事板规划：自然语言描述 → 多分镜计划 + 每个分镜的 ComfyUI 工作流。
+
+    流程（§3.2 完整管线）：
+    描述 → workflow_planner（分镜分解）
+         → entity_registry（角色/场景匹配）
+         → consistency_manager（策略推荐）
+         → workflow_assembler（逐分镜组装）
+         → 返回全部工作流 JSON
+    """
+    import workflow_planner as wp
+
+    # 加载已注册实体
+    entities_dict = await asyncio.to_thread(er.load_all_entities)
+
+    # 查找匹配的角色实体
+    character_ids = []
+    for cname in req.characters:
+        found = await asyncio.to_thread(er.search_entities, cname)
+        if found:
+            character_ids.extend([e.entity_id for e in found])
+
+    # Phase 1: 故事板规划（需要先生成 intent dict）
+    intent = await asyncio.to_thread(ds.parse_intent, req.description)
+    storyboard_plan = await asyncio.to_thread(
+        wp.plan_storyboard,
+        intent=intent,
+        total_frames=req.num_shots,
+        character_ids=character_ids,
+        description=req.description,
+    )
+
+    # 将 StoryboardPlan 转为 assemble_storyboard 期望的 dict
+    storyboard = {
+        "id": storyboard_plan.plan_id,
+        "description": req.description,
+        "style": storyboard_plan.global_style_id or req.style,
+        "shots": [
+            {
+                "index": f.frame_index,
+                "id": f"shot_{f.frame_index}",
+                "description": f.prompt_template.format(description=req.description),
+                "prompt": f.prompt_template.format(description=req.description),
+                "role": f.frame_role.value if hasattr(f.frame_role, 'value') else str(f.frame_role),
+                "characters": f.character_ids,
+                "scene": f.scene_id,
+                "scene_id": f.scene_id,
+                "props": f.prop_ids,
+                "style_id": f.style_id,
+                "duration_sec": f.duration_sec,
+            }
+            for f in storyboard_plan.frames
+        ],
+    }
+
+    # Phase 2-4: 逐分镜组装
+    result = await asyncio.to_thread(
+        wa.assemble_storyboard,
+        storyboard=storyboard,
+        entities=entities_dict,
+        image_blueprint=req.blueprint,
+        video_blueprint=req.video_blueprint,
+    )
+
+    # 汇总所有工作流 JSON
+    all_workflows = []
+    for shot in result["shots"]:
+        all_workflows.append({
+            "shot_id": shot["shot_id"],
+            "shot_index": shot["shot_index"],
+            "prompt": shot["prompt"],
+            "node_count": len(shot["workflow"]),
+            "workflow_json": wa.workflow_to_prompt_json(shot["workflow"]),
+        })
+
+    return {
+        "validated": True,
+        "storyboard_id": result["storyboard_id"],
+        "total_shots": result["total_shots"],
+        "consistency_profile": result["consistency_profile"],
+        "shots": all_workflows,
+    }
+
+
+@app.get("/api/blueprints")
+async def list_blueprints() -> dict:
+    """列出所有可用蓝图（图像 + 视频）。"""
+    return wa.list_all_blueprints()
 
 
 async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:

@@ -286,3 +286,76 @@ export interface GptWorkflowResponse {
   workflow_json: Record<string, unknown>;
   workflow_graph: WorkflowGraph;
 }
+
+// ── v4.50 工作流生成 + 故事板规划 + 蓝图库 ─────────────────────────
+/** /api/workflows/generate 请求 */
+export interface WorkflowGenerateRequest {
+  prompt: string;
+  blueprint?: string;
+  image_blueprint?: string;
+  video_blueprint?: string | null;
+  consistency_mode?: string;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg?: number;
+  negative?: string;
+  submit?: boolean;
+}
+
+/** /api/workflows/generate 响应 */
+export interface WorkflowGenerateResponse {
+  validated: boolean;
+  issues: string[];
+  node_count: number;
+  shot_id: string;
+  prompt_engineered: string;
+  consistency_mode: string;
+  entities_used: string[];
+  intent: Intent;
+  workflow_json: Record<string, unknown>;
+  workflow_graph: WorkflowGraph;
+  prompt_id?: string;
+  submitted?: boolean;
+  submit_error?: string;
+}
+
+/** /api/storyboard/plan 请求 */
+export interface StoryboardPlanRequest {
+  description: string;
+  num_shots?: number;
+  style?: string;
+  characters?: string[];
+  blueprint?: string;
+  video_blueprint?: string | null;
+}
+
+/** 单个分镜的工作流结果 */
+export interface StoryboardShotResult {
+  shot_id: string;
+  shot_index: number;
+  prompt: string;
+  node_count: number;
+  workflow_json: Record<string, unknown>;
+}
+
+/** /api/storyboard/plan 响应 */
+export interface StoryboardPlanResponse {
+  validated: boolean;
+  storyboard_id: string;
+  total_shots: number;
+  consistency_profile: Record<string, unknown>;
+  shots: StoryboardShotResult[];
+}
+
+/** /api/blueprints 响应 */
+export interface BlueprintItem {
+  id: string;
+  name: string;
+  category: string;
+}
+
+export interface BlueprintListResponse {
+  image: BlueprintItem[];
+  video: BlueprintItem[];
+}

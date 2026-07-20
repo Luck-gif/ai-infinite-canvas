@@ -264,3 +264,25 @@ def _dict_to_entity(d: Dict[str, Any]) -> Entity:
         created_at=d.get("created_at", ""),
         updated_at=d.get("updated_at", ""),
     )
+
+
+# ── v4.50 工作流组装器数据桥接 ─────────────────────────────────────
+
+def load_all_entities() -> dict:
+    """返回 workflow_assembler 期望的实体注册表格式。
+
+    格式：{"entities": {entity_id: {name, type, description, ...}}}
+    """
+    result: dict[str, dict] = {}
+    for ent in list_entities():
+        result[ent.entity_id] = {
+            "name": ent.name,
+            "type": ent.kind.value if hasattr(ent.kind, 'value') else str(ent.kind),
+            "description": ent.description or ent.name,
+            "alias": ent.alias,
+            "prompt_override": ent.prompt_override,
+            "tags": ent.tags,
+            "reference_image": ent.anchor.reference_image_path,
+            "seed": ent.anchor.seed,
+        }
+    return {"entities": result}

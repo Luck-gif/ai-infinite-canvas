@@ -274,3 +274,75 @@ def build_frame_context(
         style_id=style_id,
         params=dict(params),
     )
+
+
+# ── 策略推荐器（v4.50 新增，供 workflow_assembler 调用）─────────────
+
+def recommend(
+    shot: dict[str, Any],
+    entities: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """根据分镜内容 + 实体注册表，推荐最优一致性策略。
+
+    返回：
+    {
+        "mode": str,           # "character" / "scene" / "style" / "auto"
+        "pipeline": list[str], # 要应用的约束函数名列表
+        "params": dict,        # 注入到 sampler 的参数
+        "negative_prompt": str,# 推荐的反向提示词（含一致性约束）
+    }
+    """
+    entities = entities or {}
+    registry = entities.get("entities", {}) if isinstance(entities, dict) else {}
+
+    # 检测分镜特征
+    has_characters = bool(shot.get("characters") or shot.get("character_ids"))
+    has_scene = bool(shot.get("scene") or shot.get("scene_id"))
+    has_props = bool(shot.get("props") or shot.get("prop_ids"))
+    has_style = bool(shot.get("style") or shot.get("style_id"))
+    is_panorama = "全景" in shot.get("description", "") or "全景" in shot.get("prompt", "")
+    is_closeup = "特写" in shot.get("description", "") or "特写" in shot.get("prompt", "")
+
+    # 构建推荐
+    mode = "auto"  # 默认
+    pipeline = ["resolution_consistency", "color_consistency", "lighting_consistency"]
+    params: dict[str, Any] = {"steps": 20, "cfg": 7.0}
+    neg_parts = ["lowres", "bad anatomy"]
+
+    if has_characters:
+        mode = "character"
+        pipeline.insert(0, "character_consistency")
+        params["cfg"] = 7.5  # 角色一致需要稍高的 CFG
+        neg_parts.append("extra limbs, wrong face, disfigured")
+
+    if has_scene:
+        if not has_characters:
+            mode = "scene"
+        pipeline.insert(0 if not has_characters else 1, "scene_consistency")
+        params["cfg"] = max(params.get("cfg", 7.0), 7.0)
+
+    if has_style:
+        pipeline.append("style_consistency")
+        neg_parts.append("different style, inconsistent art style")
+
+    if has_props:
+        pipeline.append("prop_consistency")
+
+    if is_panorama:
+        pipeline.append("spatial_consistency")
+        params["width"] = params.get("width", 1280)
+        params["height"] = params.get("height", 720)
+
+    if is_closeup:
+        pipeline.append("expression_consistency")
+
+    # 叙事一致性总是在最后（全局约束）
+    if len(shot.get("characters", [])) > 1:
+        pipeline.append("narrative_consistency")
+
+    return {
+        "mode": mode if has_characters or has_scene else "auto",
+        "pipeline": pipeline,
+        "params": params,
+        "negative_prompt": ", ".join(neg_parts),
+    }
