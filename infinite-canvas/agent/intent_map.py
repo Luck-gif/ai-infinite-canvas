@@ -15,6 +15,8 @@ MVP 支持（RTX 5080 16GB 实测可行）：
 """
 from __future__ import annotations
 
+import random
+
 import comfy_client as cc
 from typing import Any
 
@@ -158,7 +160,7 @@ def build_workflow(
     width = int(params.get("width") or 1024)
     height = int(params.get("height") or 1024)
     batch_size = max(1, min(8, int(batch_size or 1)))
-    seed = int(seed) if seed is not None else int(params.get("seed") or 0)
+    seed = int(seed) if seed is not None else int(params.get("seed") or random.randint(1, 2**31 - 1))
     tok = _model_token(params)
 
     meta: dict[str, Any] = {

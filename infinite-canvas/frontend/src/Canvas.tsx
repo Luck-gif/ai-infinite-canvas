@@ -1,6 +1,7 @@
+// v4.41 画布性能优化：视口裁剪 + 图片懒加载 + 撤销历史深度限制
 // v4.28 画布多选框选：在 v4.20 拖拽连线基础上，
 // 增加「Shift+点击多选 / 拖拽空白框选 / 批量删除」能力。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Stage,
   Layer,
@@ -37,10 +38,40 @@ function center(n: CanvasNode) {
   return { cx: n.x + n.width / 2, cy: n.y + n.height / 2 };
 }
 
+// ── v4.41 视口裁剪 ──────────────────────────────────────────────
+/** 视口外扩展边距（canvas 坐标系），防止平移时节点闪入 */
+const VIEWPORT_MARGIN = 600;
+
+/** 计算当前视口内可见的节点 ID 集合；节点数 ≤ 20 时跳过裁剪开销 */
+function getVisibleNodeIds(
+  nodes: CanvasNode[],
+  view: View,
+  stageW: number,
+  stageH: number,
+  margin: number = VIEWPORT_MARGIN,
+): Set<string> | null {
+  if (nodes.length <= 20) return null; // 少节点全量渲染，避免裁剪开销
+  if (stageW <= 0 || stageH <= 0) return null;
+  const left  = -view.x / view.scale - margin;
+  const top   = -view.y / view.scale - margin;
+  const right = (stageW - view.x) / view.scale + margin;
+  const bottom = (stageH - view.y) / view.scale + margin;
+  return new Set(
+    nodes
+      .filter((n) => {
+        if (n.width == null || n.height == null) return true;
+        return !(n.x + n.width < left || n.x > right || n.y + n.height < top || n.y > bottom);
+      })
+      .map((n) => n.id),
+  );
+}
+
 interface NodeImageProps {
   node: CanvasNode;
   selected: boolean;
   multiSelected: boolean;
+  /** v4.41 懒加载：仅视口内节点才加载位图，减少内存与网络开销 */
+  isVisible: boolean;
   linkingFrom: string | null;
   onStartLink: (id: string) => void;
   onDragMove: (id: string, x: number, y: number) => void;
@@ -55,6 +86,7 @@ function NodeImage({
   node,
   selected,
   multiSelected,
+  isVisible,
   linkingFrom,
   onStartLink,
   onDragMove,
@@ -73,6 +105,7 @@ function NodeImage({
 
   useEffect(() => {
     if (isControl) return; // 控制节点无位图，跳过加载
+    if (!isVisible) return; // v4.41 懒加载：视口外不加载
     const w = node.width, h = node.height;
     let alive = true;
     const url = imageUrl(node.filename);
@@ -107,7 +140,7 @@ function NodeImage({
     return () => {
       alive = false;
     };
-  }, [node.filename, isVideo]);
+  }, [node.filename, isVideo, isVisible]);
 
   const badge = isControl
     ? { label: node.controlKind === 'controlnet' ? 'ControlNet' : 'LoRA', color: ctrlColor }
@@ -253,6 +286,12 @@ export function Canvas() {
 
   const edges = computeEdges(nodes);
   const linkEdges = computeLinks(nodes, links);
+
+  // ── v4.41 视口裁剪：计算当前可见节点 ID 集 ────────────────────
+  const visibleNodeIds = useMemo(
+    () => getVisibleNodeIds(nodes, view, size.w, size.h),
+    [nodes, view.x, view.y, view.scale, size.w, size.h],
+  );
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -464,6 +503,8 @@ export function Canvas() {
         {/* 节点层 */}
         <Layer>
           {nodes.map((n) => {
+            // v4.41 视口裁剪：跳过不可见节点（节点数 > 20 时生效）
+            if (visibleNodeIds && !visibleNodeIds.has(n.id)) return null;
             const isMultiSelected = selectedIds.includes(n.id) && selectedIds.length >= 2;
             return (
             <NodeImage
@@ -471,6 +512,7 @@ export function Canvas() {
               node={n}
               selected={n.id === selectedId}
               multiSelected={isMultiSelected}
+              isVisible={visibleNodeIds ? visibleNodeIds.has(n.id) : true}
               linkingFrom={linkingFrom}
               onStartLink={startLink}
               onDragMove={dragMove}

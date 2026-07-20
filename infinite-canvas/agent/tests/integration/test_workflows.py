@@ -1,16 +1,15 @@
 """端到端集成测试：intent_map 构建工作流 → workflow_to_graph → ComfyUI 校验"""
 from __future__ import annotations
-import json, sys, os, io, urllib.error
-# Windows cmd 兼容：输出 UTF-8
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.path.insert(0, os.path.dirname(__file__))
+import json, sys, os, urllib.error
 import intent_map as im
 import comfy_client as cc
 
-# 引入 validator（skill 目录在项目根上方）
-SKILL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", ".codebuddy", "skills", "comfyui-workflow-validator")
+# 引入 validator（.codebuddy/skills 目录在项目根）
+_AGENT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_PROJECT_ROOT = os.path.dirname(_AGENT_DIR)
+SKILL_DIR = os.path.join(_PROJECT_ROOT, ".codebuddy", "skills", "comfyui-workflow-validator")
 sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
-import validate_workflow as vw  # type: ignore[import-not-found]  # skill 目录，运行时 sys.path 挂载
+import validate_workflow as vw  # type: ignore[import-not-found]
 
 def test_all_intents():
     actions = ['txt2img', 'img2img', 'inpaint', 'outpaint']

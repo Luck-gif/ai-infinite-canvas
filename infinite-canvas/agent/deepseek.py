@@ -27,55 +27,153 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 # 离线兜底模型优先级（已缓存的优先）
 OLLAMA_FALLBACKS = ["qwen2.5:14b", "qwen2.5-coder:14b", "qwen2.5:7b"]
 
-# action 白名单（与 §6.0.2 的 18 个令牌一致）
+# action 白名单（与 intent_map.SUPPORTED_ACTIONS 完全对齐，§6.0.2）
+# 注意：拼写必须与 intent_map 中的 SUPPORTED_ACTIONS 严格一致
 ACTION_WHITELIST = {
-    "txt2img", "img2img", "outpainting", "inpainting", "multi_reference",
-    "pose_control", "depth_control", "canny_control", "ipadapter_face",
-    "txt2vid", "img2vid", "frame2vid", "image_variation", "video_extension",
-    "video_editing", "speech2text", "text_to_speech", "music",
+    "txt2img", "img2img", "inpaint", "outpaint",
+    "txt2vid", "img2vid",
+    "face_consistency", "image_blend", "style_consistency",
+    "scene_consistency", "prop_consistency", "storyboard",
 }
 
 _SYSTEM_PROMPT = (
-    "你是「无限画布」的意图解析器。用户用中文或英文描述想生成的画面，你只输出严格 JSON，禁止 JSON 外任何内容。\n"
-    "必须输出以下字段（不得增删）：\n"
-    "{\n"
-    '  "action": "txt2img",\n'
-    '  "subject": "画面主体（简短具体，如『红色狐狸』；禁止 unknown/空）",\n'
-    '  "style": "画面风格（如『赛博朋克』『写实摄影』『动漫』；无则空字符串）",\n'
-    '  "elements": ["元素1", "元素2"],\n'
-    '  "params": {\n'
-    '    "model": "qwen2|sdxl|flux_klein（仅用户显式指定才填，否则省略）",\n'
-    '    "width": 整数(竖图 height>width 如 768, 横图 width>height 如 1024, 方图 1024; 不确定省略),\n'
-    '    "height": 整数(同理),\n'
-    '    "steps": 整数(20-30; 不确定省略),\n'
-    '    "cfg": 浮点(7.0; 不确定省略),\n'
-    '    "prompt": "高质量英文正向提示词，基于用户描述扩展（主体+风格+光线+构图）；绝不能是占位符或空",\n'
-    '    "negative_prompt": "英文负向提示词；无则空字符串"\n'
-    "  }\n"
-    "}\n"
-    "规则：\n"
-    "1. action 固定为 txt2img（本版本仅支持文生图）。\n"
-    "2. subject 必须从用户描述提取具体主体，禁止 unknown。\n"
-    "3. prompt 必须是有信息量的英文描述；若用户用中文，请翻译并扩展为英文提示词。禁止 'An image with...'、占位符、空字符串。\n"
-    "4. 中文提示词也会被引擎接受，但英文质量更佳。"
+    "你是「无限画布」的 AI 漫剧创作意图解析器。用户用中文描述创作意图（图像/视频/角色/分镜等），"
+    "你只输出严格 JSON，禁止 JSON 外任何内容。\n\n"
+    "=== 支持的 action（12种）===\n"
+    "1) txt2img — 文生图，纯文本描述\n"
+    "2) img2img — 图生图，需参考已有图片\n"
+    "3) inpaint — 局部重绘/修复\n"
+    "4) outpaint — 扩图/外绘（向外扩展画面）\n"
+    "5) txt2vid — 文生视频\n"
+    "6) img2vid — 图生视频\n"
+    "7) face_consistency — 面部一致，提到「同一个人」「保持长相」「这个角色的脸」\n"
+    "8) style_consistency — 画风锁定，提到「同样的画风」「保持风格」\n"
+    "9) scene_consistency — 场景一致，提到「同一个场景」「这个背景里」\n"
+    "10) prop_consistency — 道具一致，提到「同一个物品」「保持这个道具」\n"
+    "11) image_blend — 多图融合，提到「放到场景里」「合并」「合成」\n"
+    "12) storyboard — 分镜编排，提到「分镜」「几个镜头」「这一段剧情」\n\n"
+    "=== JSON 输出格式 ===\n"
+    "所有 action 共享基础字段:\n"
+    '{"action":"...","prompt":"英文提示词","negative_prompt":"","confidence":0.0}\n'
+    "特定 action 额外出:\n"
+    "- img2img/inpaint/outpaint/face_consistency/style_consistency/scene_consistency/prop_consistency:\n"
+    '  加 "reference_image_id":"..." (提到图片/角色/场景时填逻辑ID)\n'
+    "- inpaint: 加 mask_description(str)\n"
+    "- outpaint: 加 direction(str: left/right/top/bottom/all)\n"
+    "- face_consistency: 加 character_name(str) 和 method(str, 可省略)\n"
+    "- style_consistency: 加 style_name(str)\n"
+    "- image_blend: 加 source_image_ids(str[]列表)\n"
+    "- storyboard: 加 shots(list of {shot_id,description,action,prompt})\n"
+    "- img2img: 加 denoise_strength(float 0-1)\n\n"
+    "=== 核心规则 ===\n"
+    "1. prompt 必须是英文，基于用户描述扩展（主体+风格+光线+构图），禁止空字符串或占位符\n"
+    "2. 默认 action 为 txt2img\n"
+    "3. confidence 取值 0.0-1.0，匹配清晰则高\n"
+    "4. 一致性类 action 优先级高于 txt2img：角色>风格>场景>道具\n"
+    "5. 若用户同时描述「人物+场景」，分别归为 face_consistency 和 scene_consistency，不可混为 txt2img\n"
 )
 
-# 中文→JSON 的 few-shot 示例（显著提升 deepseek-v4-flash 对中文的遵循度）
+# 中文→JSON 的 few-shot 示例（覆盖全部 12 种 action，显著提升遵循度）
 _FEWSHOT: list[dict[str, str]] = [
+    # txt2img
     {"role": "user", "content": "画一座宁静的雪山湖泊，写实摄影风格，横图"},
     {"role": "assistant", "content": json.dumps({
-        "action": "txt2img", "subject": "雪山湖泊", "style": "写实摄影",
-        "elements": ["雪山", "湖泊"],
-        "params": {"width": 1024, "height": 576,
-                   "prompt": "a serene snow mountain lake, realistic photography, calm water reflection, soft natural light, highly detailed",
-                   "negative_prompt": "cartoon, low quality, watermark"}})},
+        "action": "txt2img",
+        "prompt": "a serene snow mountain lake, realistic photography, calm water reflection, soft natural light, highly detailed",
+        "negative_prompt": "cartoon, low quality, watermark",
+        "confidence": 0.95})},
+    # img2img
+    {"role": "user", "content": "把这张照片变成宫崎骏动漫风格"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "img2img", "reference_image_id": "photo-1", "denoise_strength": 0.75,
+        "prompt": "Studio Ghibli anime style portrait, hand-drawn, soft colors, gentle lighting, high quality",
+        "negative_prompt": "photorealistic, 3d render, low quality",
+        "confidence": 0.9})},
+    # inpaint
+    {"role": "user", "content": "把图片里这个人物的眼睛修复一下"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "inpaint", "reference_image_id": "img-1", "mask_description": "眼睛区域",
+        "prompt": "detailed eye, natural looking eye, realistic, high quality",
+        "negative_prompt": "blurry, distorted, low quality",
+        "confidence": 0.92})},
+    # outpaint
+    {"role": "user", "content": "把这张图向右扩展一倍"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "outpaint", "reference_image_id": "img-1", "direction": "right",
+        "prompt": "continue the scene, seamless extension, natural environment",
+        "negative_prompt": "seam, border, cut",
+        "confidence": 0.93})},
+    # face_consistency
+    {"role": "user", "content": "用这个角色的脸，画一张她在雨中撑伞的画面"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "face_consistency", "reference_image_id": "char-1", "character_name": "她",
+        "prompt": "a woman holding umbrella in the rain, same face and features, rainy street, moody atmosphere, soft lighting",
+        "negative_prompt": "different face, low quality",
+        "confidence": 0.94})},
+    # style_consistency
+    {"role": "user", "content": "保持这个水墨画风，画一只仙鹤"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "style_consistency", "reference_image_id": "style-ref-1", "style_name": "水墨画风",
+        "prompt": "a crane, traditional Chinese ink wash painting style, elegant brushstrokes, minimalist, artistic",
+        "negative_prompt": "photorealistic, western painting style, color",
+        "confidence": 0.94})},
+    # scene_consistency
+    {"role": "user", "content": "在这个古风庭院场景里，画一个丫鬟在扫地"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "scene_consistency", "reference_image_id": "scene-courtyard-1", "scene_name": "古风庭院",
+        "prompt": "a maid sweeping the floor, same ancient Chinese courtyard background, consistent architecture and lighting",
+        "negative_prompt": "different background, modern elements",
+        "confidence": 0.92})},
+    # prop_consistency
+    {"role": "user", "content": "保持这把剑的样子，画一个侠客拿着它站在山顶"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "prop_consistency", "reference_image_id": "sword-1", "prop_name": "剑",
+        "prompt": "a swordsman holding the same sword on a mountain peak, dramatic lighting, epic atmosphere",
+        "negative_prompt": "different sword design, low quality",
+        "confidence": 0.91})},
+    # image_blend
+    {"role": "user", "content": "把这张角色图放到那个森林场景里"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "image_blend", "source_image_ids": ["char-1", "forest-scene-1"],
+        "prompt": "character placed in forest scene, natural composition, consistent lighting, photorealistic blend",
+        "negative_prompt": "mismatched lighting, cutout look",
+        "confidence": 0.93})},
+    # txt2vid
+    {"role": "user", "content": "生成一段樱花飘落的视频，5秒"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "txt2vid", "duration": 5,
+        "prompt": "cherry blossoms falling gently in the wind, spring atmosphere, soft natural light, cinematic slow motion",
+        "negative_prompt": "low quality, jittery, blurry",
+        "confidence": 0.95})},
+    # img2vid
+    {"role": "user", "content": "把这张静态图变成动态视频，人物眨眼微笑"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "img2vid", "reference_image_id": "portrait-1",
+        "prompt": "person blinking and smiling gently, natural subtle movement, cinematic portrait",
+        "negative_prompt": "static, frozen, unnatural movement",
+        "confidence": 0.9})},
+    # storyboard
+    {"role": "user", "content": "做一个3个镜头的分镜：女主走进房间，看到桌上的信，拿起信哭了"},
+    {"role": "assistant", "content": json.dumps({
+        "action": "storyboard",
+        "shots": [
+            {"shot_id": "1", "description": "女主走进房间", "action": "txt2img",
+             "prompt": "a young woman entering a dimly lit room, full body shot, melancholic atmosphere, cinematic lighting"},
+            {"shot_id": "2", "description": "看到桌上信", "action": "txt2img",
+             "prompt": "close up of a letter on a wooden table, warm candlelight, vintage paper texture"},
+            {"shot_id": "3", "description": "拿起信哭了", "action": "txt2img",
+             "prompt": "a young woman holding a letter, tears streaming down, emotional close up, soft focus, dramatic lighting"}
+        ],
+        "prompt": "storyboard of 3 shots about a woman discovering a letter",
+        "negative_prompt": "low quality",
+        "confidence": 0.95})},
+    # Qwen-Image 文生图
     {"role": "user", "content": "用 Qwen-Image 画一只在星空下奔跑的红色狐狸，赛博朋克风格，竖图"},
     {"role": "assistant", "content": json.dumps({
-        "action": "txt2img", "subject": "红色狐狸", "style": "赛博朋克",
-        "elements": ["星空", "奔跑"],
-        "params": {"model": "qwen2", "width": 768, "height": 1024,
-                   "prompt": "a red fox running under a starry sky, cyberpunk, neon glow, dynamic motion, highly detailed",
-                   "negative_prompt": "blurry, low quality"}})},
+        "action": "txt2img",
+        "prompt": "a red fox running under a starry sky, cyberpunk, neon glow, dynamic motion, highly detailed",
+        "negative_prompt": "blurry, low quality",
+        "confidence": 0.96})},
 ]
 
 _JSON_FENCE = re.compile(r"\{.*\}", re.DOTALL)
@@ -176,24 +274,55 @@ def parse_intent(user_input: str) -> dict[str, Any]:
 
 
 def _postprocess(intent: dict[str, Any], user_input: str = "") -> dict[str, Any]:
-    """规整意图：强制字段存在、action 命中白名单、params 为 dict。
+    """归一化意图：兼容新旧两种 LLM 输出格式 → intent_map.build_workflow 所需格式.
 
-    退化兜底：DeepSeek v4 对中文结构化输出**不稳定**（时而高质量英文、时而泛化
-    占位、时而直接回中文）。策略：
-      - prompt：若 LLM 给的英文具体（≥20 字符且无泛化词）则用之；否则回退用户
-        原始中文输入（NoobAI/SDXL 中文 clip 实测可用），保证出图不退化。
-      - subject：退化（unknown/泛化）则用 user_input 截断兜底。
-    目标：无论 LLM 如何波动，「自然语言→真实出图」闭环不破（§14.3 自愈）。
+    LLM 可能输出两种 schema:
+     A) 旧格式: {action, subject, style, elements, params{prompt, negative_prompt, model, ...}}
+     B) 新格式: {action, prompt, negative_prompt, confidence, reference_image_id?, ...}
+
+    归一化后统一提供:
+      - intent["params"]["prompt"] / intent["params"]["negative_prompt"]
+      - intent["subject"]  作为主体提取兜底
+      - intent["action"]  白名单校验
     """
     intent.setdefault("action", "txt2img")
-    intent.setdefault("subject", "")
-    intent.setdefault("style", "")
-    intent.setdefault("elements", [])
+
+    # 确保 params 存在并合并新旧字段
     params = intent.get("params")
     if not isinstance(params, dict):
         params = {}
+    intent["params"] = params
+
+    # 新格式: 顶层 prompt/negative_prompt → 合并到 params
+    top_prompt = str(intent.pop("prompt", "")).strip()
+    top_neg = str(intent.pop("negative_prompt", "")).strip()
+    params_prompt = str(params.get("prompt", "")).strip()
+    params_neg = str(params.get("negative_prompt", "")).strip()
+
     user_input = (user_input or "").strip()
-    llm_prompt = str(params.get("prompt") or "").strip()
+    llm_prompt = top_prompt or params_prompt
+    llm_neg = top_neg or params_neg
+
+    # 新格式: 顶层标量参数（duration/fps/blend_mode/face_weight/denoise_strength 等）
+    # → 合并进 params（IntentResponse 只透传 params，顶层字段会在 API 边界丢失）
+    _KEY_RENAME = {"denoise_strength": "denoise"}  # LLM 键名 → build_workflow 键名
+    _KEEP_TOP = {"action", "subject", "style", "elements", "params", "confidence",
+                 "reference_image_id", "character_name", "style_name", "scene_name",
+                 "prop_name", "source_image_ids", "shots", "story_context"}
+    for k, v in list(intent.items()):
+        if k in _KEEP_TOP or not isinstance(v, (str, int, float, bool)):
+            continue
+        nk = _KEY_RENAME.get(k, k)
+        params.setdefault(nk, v)
+
+    # 视频: duration(秒) → frames 换算（build_workflow 读 params["frames"]）
+    if "frames" not in params and params.get("duration"):
+        try:
+            vfps = int(params.get("fps") or 16)
+            params["frames"] = max(1, int(float(params["duration"]) * vfps))
+        except (TypeError, ValueError):
+            pass
+
     # 泛化/退化词表（DeepSeek v4 偶发占位）
     _GENERIC = [
         "question mark", "unknown", "an image with", "placeholder", "暂无", "无 ", "n/a",
@@ -203,17 +332,26 @@ def _postprocess(intent: dict[str, Any], user_input: str = "") -> dict[str, Any]
     ]
     _use_llm = (
         bool(llm_prompt)
-        and len(llm_prompt) >= 20
+        and len(llm_prompt) >= 10  # 降低阈值，兼容短但有效的英文 prompt
         and not any(b in llm_prompt.lower() for b in _GENERIC)
     )
     prompt = llm_prompt if _use_llm else (user_input or "a beautiful scenery")
     params["prompt"] = prompt
-    params.setdefault("negative_prompt", "")
-    intent["params"] = params
+    params["negative_prompt"] = llm_neg
+
+    # 旧格式: subject / style / elements → 保持兼容
+    intent.setdefault("subject", "")
+    intent.setdefault("style", "")
+    intent.setdefault("elements", [])
+
+    # subject 退化为 user_input 截断
     subj = str(intent.get("subject", "")).strip()
     if subj.lower() in ("", "unknown") or any(b in subj.lower() for b in _GENERIC):
         intent["subject"] = (user_input[:24] if user_input else "scene")
-    # action 白名单约束（§6.0.2）；未知 action 一律按 txt2img 兜底（仅 MVP 已支持）
+
+    # action 白名单约束
     if intent["action"] not in ACTION_WHITELIST:
         intent["action"] = "txt2img"
+
+    intent["params"] = params
     return intent

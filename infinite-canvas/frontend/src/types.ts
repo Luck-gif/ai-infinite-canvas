@@ -223,3 +223,66 @@ export interface StoryboardArgs {
   cfg?: number;
   seed?: number;
 }
+
+// ── v4.39 视频时间轴与多段拼接 ──────────────────────────────────
+/** 时间轴上的一个视频片段 */
+export interface TimelineClip {
+  nodeId: string;
+  filename: string;
+  /** 视频节点帧数 */
+  frames: number;
+  /** 视频节点帧率 */
+  fps: number;
+  /** 提示词（用于悬停信息） */
+  prompt: string;
+}
+
+/** /api/concat_videos 请求 */
+export interface ConcatVideosRequest {
+  video_names: string[];
+  output_name?: string | null;
+}
+
+/** /api/concat_videos 响应 */
+export interface ConcatVideosResponse {
+  validated: boolean;
+  filename: string | null;
+  issues: string[];
+}
+
+/** 时间轴拼接参数（GenParams 扩展） */
+export interface ConcatArgs {
+  video_names: string[];
+  output_name?: string | null;
+}
+
+// ── v4.42 自定义工作流库 + GPT 辅助创建 ──────────────────────────
+/** 已保存的工作流库项元数据 */
+export interface WorkflowLibraryItem {
+  name: string;
+  description: string;
+  node_count: number;
+  saved_at: number;
+}
+
+/** 工作流库项完整数据（含 raw ComfyUI JSON + 可视化图） */
+export interface WorkflowLibraryData {
+  name: string;
+  description: string;
+  saved_at: number;
+  workflow_json: Record<string, unknown>;
+  workflow_graph?: WorkflowGraph;
+}
+
+/** GPT 辅助创建工作流的请求/响应 */
+export interface GptWorkflowRequest {
+  description: string;
+}
+
+export interface GptWorkflowResponse {
+  template_id: string;
+  node_count: number;
+  intent: Intent;
+  workflow_json: Record<string, unknown>;
+  workflow_graph: WorkflowGraph;
+}

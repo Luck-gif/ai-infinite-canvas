@@ -6,6 +6,12 @@ import type {
   TemplateMeta,
   StoryboardArgs,
   StoryboardResponse,
+  ConcatVideosRequest,
+  ConcatVideosResponse,
+  WorkflowLibraryItem,
+  WorkflowLibraryData,
+  GptWorkflowRequest,
+  GptWorkflowResponse,
 } from './types';
 
 const BASE = '/api';
@@ -163,4 +169,59 @@ export async function loadUserTemplate(name: string): Promise<UserTemplateData> 
 export async function deleteUserTemplate(name: string): Promise<void> {
   const res = await fetch(`${BASE}/templates/user/${encodeURIComponent(name)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`[${res.status}] delete template`);
+}
+
+// ── v4.39 视频多段拼接 ──────────────────────────────────────────
+/** 拼接多个视频文件为单个 mp4 */
+export async function concatVideos(args: ConcatVideosRequest): Promise<ConcatVideosResponse> {
+  return postJSON<ConcatVideosResponse>(`${BASE}/concat_videos`, args);
+}
+
+// ── v4.40 画布导出 ZIP ───────────────────────────────────────────
+/** 将画布节点媒体文件打包下载为 ZIP */
+export async function exportCanvasZip(filenames: string[]): Promise<{ blob: Blob; added: number; missing: number }> {
+  const res = await fetch(`${BASE}/export_canvas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filenames }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`导出失败 [${res.status}]: ${text}`);
+  }
+  const blob = await res.blob();
+  const added = parseInt(res.headers.get('X-Added-Count') || '0', 10);
+  const missing = parseInt(res.headers.get('X-Missing-Count') || '0', 10);
+  return { blob, added, missing };
+}
+
+// ── v4.42 自定义工作流库 + GPT ────────────────────────────────────
+/** 保存自定义 ComfyUI 工作流 JSON */
+export async function saveWorkflow(name: string, description: string, workflowJson: Record<string, unknown>): Promise<{ name: string; node_count: number }> {
+  return postJSON(`${BASE}/workflows/save`, { name, description, workflow_json: workflowJson });
+}
+
+/** 列出所有已保存的自定义工作流 */
+export async function listWorkflows(): Promise<WorkflowLibraryItem[]> {
+  const res = await fetch(`${BASE}/workflows`);
+  if (!res.ok) return [];
+  return res.json() as Promise<WorkflowLibraryItem[]>;
+}
+
+/** 加载单个自定义工作流完整数据 */
+export async function loadWorkflow(name: string): Promise<WorkflowLibraryData> {
+  const res = await fetch(`${BASE}/workflows/${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`[${res.status}] load workflow`);
+  return res.json() as Promise<WorkflowLibraryData>;
+}
+
+/** 删除自定义工作流 */
+export async function deleteWorkflow(name: string): Promise<void> {
+  const res = await fetch(`${BASE}/workflows/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`[${res.status}] delete workflow`);
+}
+
+/** GPT 辅助：从自然语言描述生成 ComfyUI 工作流 JSON */
+export async function gptCreateWorkflow(req: GptWorkflowRequest): Promise<GptWorkflowResponse> {
+  return postJSON<GptWorkflowResponse>(`${BASE}/workflows/gpt`, req);
 }

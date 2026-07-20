@@ -1,6 +1,6 @@
 // 无限画布 · 全局状态（zustand）；含撤销/重做历史栈 + localStorage 持久化 + v4.28 多选框选
 import { create } from 'zustand';
-import type { CanvasNode, Link, WorkflowGraph } from './types';
+import type { CanvasNode, Link, WorkflowGraph, TimelineClip } from './types';
 
 const STORAGE_KEY = 'infinite-canvas.nodes.v1';
 
@@ -57,6 +57,8 @@ function persist(state: { nodes: CanvasNode[]; links: Link[] }) {
 
 /** 历史快照：同时保存 nodes 与 links，保证撤销/重做一致 */
 type Snapshot = { nodes: CanvasNode[]; links: Link[] };
+/** 撤销历史栈最大深度（防止大量操作后内存膨胀） */
+const MAX_HISTORY = 50;
 
 interface CanvasState {
   nodes: CanvasNode[];
@@ -109,6 +111,22 @@ interface CanvasState {
   setViewWorkflow: (g: WorkflowGraph | null) => void;
   /** 切换工作流面板展开 */
   setWfOpen: (open: boolean) => void;
+
+  // ── v4.39 视频时间轴 ──────────────────────────────────────────
+  /** 时间轴面板是否打开 */
+  timelineOpen: boolean;
+  /** 时间轴上的视频片段列表 */
+  timelineClips: TimelineClip[];
+  /** 切换时间轴面板 */
+  setTimelineOpen: (open: boolean) => void;
+  /** 添加视频片段到时间轴（重复 nodeId 忽略） */
+  addToTimeline: (clip: TimelineClip) => void;
+  /** 从时间轴移除视频片段 */
+  removeFromTimeline: (nodeId: string) => void;
+  /** 重新排序时间轴片段 */
+  reorderTimeline: (clips: TimelineClip[]) => void;
+  /** 清空时间轴 */
+  clearTimeline: () => void;
 }
 
 function snapshot(
@@ -116,7 +134,12 @@ function snapshot(
   get: () => CanvasState,
 ) {
   const { nodes, links } = get();
-  set((s) => ({ past: [...s.past, { nodes, links }], future: [] }));
+  set((s) => ({
+    past: s.past.length >= MAX_HISTORY
+      ? [...s.past.slice(-(MAX_HISTORY - 1)), { nodes, links }]
+      : [...s.past, { nodes, links }],
+    future: [],
+  }));
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => {
@@ -273,5 +296,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     setLiveWorkflow: (g) => set({ liveWorkflow: g }),
     setViewWorkflow: (g) => set({ viewWorkflow: g }),
     setWfOpen: (open) => set({ wfOpen: open }),
+
+    // ── v4.39 视频时间轴 ────────────────────────────────────────
+    timelineOpen: false,
+    timelineClips: [],
+
+    setTimelineOpen: (open) => set({ timelineOpen: open }),
+
+    addToTimeline: (clip) => {
+      const existing = get().timelineClips.some((c) => c.nodeId === clip.nodeId);
+      if (existing) return;
+      set((s) => ({ timelineClips: [...s.timelineClips, clip] }));
+    },
+
+    removeFromTimeline: (nodeId) => {
+      set((s) => ({
+        timelineClips: s.timelineClips.filter((c) => c.nodeId !== nodeId),
+      }));
+    },
+
+    reorderTimeline: (clips) => set({ timelineClips: clips }),
+
+    clearTimeline: () => set({ timelineClips: [] }),
   };
 });

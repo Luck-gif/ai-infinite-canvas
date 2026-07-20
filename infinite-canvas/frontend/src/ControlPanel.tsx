@@ -114,6 +114,9 @@ export function ControlPanel() {
   const setLiveWorkflow = useCanvasStore((s) => s.setLiveWorkflow);
   const select = useCanvasStore((s) => s.select);
   const replaceAll = useCanvasStore((s) => s.replaceAll);  // v4.31: 模板加载
+  const addToTimeline = useCanvasStore((s) => s.addToTimeline);
+  const setTimelineOpen = useCanvasStore((s) => s.setTimelineOpen);
+  const timelineClips = useCanvasStore((s) => s.timelineClips);
   const [loras, setLoras] = useState<string[]>([]);
   useEffect(() => {
     listLoras().then(setLoras).catch(() => {});
@@ -455,7 +458,7 @@ export function ControlPanel() {
         try {
           const res = await generateStoryboard({
             prompts,
-            checkpoint: p.ckpt || undefined,
+            checkpoint: p.model || undefined,
             width: p.width, height: p.height,
             steps: p.steps, cfg: p.cfg,
             seed,
@@ -471,7 +474,6 @@ export function ControlPanel() {
           const outH = p.height;
           const dw = DISPLAY_W;
           const dh = Math.max(120, Math.round(DISPLAY_W * (outH / outW)));
-          const base = nodeCount;
           let placed = 0;
           for (let i = 0; i < res.frames.length; i++) {
             const frame = res.frames[i];
@@ -1121,7 +1123,7 @@ export function ControlPanel() {
               width: '100%', resize: 'vertical',
               padding: '8px 10px', borderRadius: 6,
               border: `1px solid ${theme.border.subtle}`,
-              background: theme.surface.input,
+              background: theme.bg.input,
               color: theme.text.primary,
               fontSize: 12, fontFamily: 'inherit', lineHeight: 1.6,
               outline: 'none', marginTop: 6,
@@ -1263,6 +1265,37 @@ export function ControlPanel() {
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 12, color: theme.accent.fuchsia, marginBottom: 4 }}>▶ 视频预览（点击播放）</div>
               <video controls autoPlay loop muted playsInline src={imageUrl(selectedNode.filename)} style={{ width: '100%', borderRadius: 8, background: '#000', maxHeight: 260 }} />
+              <button
+                onClick={() => {
+                  const alreadyIn = timelineClips.some((c) => c.nodeId === selectedNode.id);
+                  if (alreadyIn) return;
+                  addToTimeline({
+                    nodeId: selectedNode.id,
+                    filename: selectedNode.filename,
+                    frames: selectedNode.frames || 0,
+                    fps: selectedNode.fps || 24,
+                    prompt: selectedNode.prompt || '',
+                  });
+                  setTimelineOpen(true);
+                }}
+                disabled={timelineClips.some((c) => c.nodeId === selectedNode.id)}
+                style={{
+                  marginTop: 6, width: '100%', height: 28,
+                  background: timelineClips.some((c) => c.nodeId === selectedNode.id)
+                    ? '#1a2a1a' : theme.bg.card,
+                  border: `1px solid ${theme.border.subtle}`,
+                  borderRadius: 6, color: timelineClips.some((c) => c.nodeId === selectedNode.id)
+                    ? theme.accent.emerald : theme.text.secondary,
+                  fontSize: 12, cursor: timelineClips.some((c) => c.nodeId === selectedNode.id)
+                    ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {timelineClips.some((c) => c.nodeId === selectedNode.id)
+                  ? '✅ 已加入时间轴'
+                  : '⚡ 添加到时间轴'}
+              </button>
             </div>
           )}
           <Row k="prompt" v={selectedNode.prompt} />

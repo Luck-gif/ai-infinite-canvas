@@ -4,8 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from './Canvas';
 import { ControlPanel } from './ControlPanel';
 import { WorkflowPanel } from './WorkflowPanel';
+import Timeline from './Timeline';
+import { WorkflowLibrary } from './WorkflowLibrary';
+import type { WorkflowLibraryData, WorkflowGraph } from './types';
 import { useCanvasStore, serializeNodes, deserializeNodes } from './store';
-import { getStatus } from './api';
+import { exportCanvasZip, getStatus } from './api';
 import { theme } from './theme';
 
 interface ToastItem {
@@ -33,10 +36,31 @@ export function App() {
   const viewWorkflow = useCanvasStore((s) => s.viewWorkflow);
   const wfOpen = useCanvasStore((s) => s.wfOpen);
   const setWfOpen = useCanvasStore((s) => s.setWfOpen);
+  const timelineOpen = useCanvasStore((s) => s.timelineOpen);
+  const setTimelineOpen = useCanvasStore((s) => s.setTimelineOpen);
 
   const [conn, setConn] = useState<string>('…');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [wfLibOpen, setWfLibOpen] = useState(false);
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── v4.42 工作流库回调 ──────────────────────────────────────────
+  const handleLoadWorkflow = useCallback((data: WorkflowLibraryData) => {
+    // 加载工作流 → 存入 viewWorkflow → 触发面板显示
+    if (data.workflow_graph?.nodes?.length) {
+      useCanvasStore.getState().setViewWorkflow(data.workflow_graph);
+      setWfOpen(true);
+    } else {
+      toastChannel.push('info', `已加载工作流「${data.name}」（无可视化图）`);
+    }
+  }, [setWfOpen]);
+  const handleGptGraph = useCallback((graph: WorkflowGraph) => {
+    if (graph.nodes?.length && graph.edges?.length) {
+      useCanvasStore.getState().setViewWorkflow(graph);
+      setWfOpen(true);
+    }
+  }, [setWfOpen]);
 
   // Toast 通知订阅
   useEffect(() => {
@@ -76,6 +100,35 @@ export function App() {
       toastChannel.push('success', `导出成功：${useCanvasStore.getState().nodes.length} 个节点`);
     } catch (e) {
       toastChannel.push('error', '导出失败：' + ((e as Error)?.message || String(e)));
+    }
+  };
+
+  const exportZIP = async () => {
+    const curNodes = useCanvasStore.getState().nodes;
+    const filenames = curNodes
+      .filter((n) => n.filename)
+      .map((n) => n.filename);
+    if (filenames.length === 0) {
+      toastChannel.push('info', '画布中没有可导出的媒体文件');
+      setExportMenuOpen(false);
+      return;
+    }
+    try {
+      toastChannel.push('info', `正在打包 ${filenames.length} 个文件…`);
+      const { blob, added, missing } = await exportCanvasZip(filenames);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `canvas-media-${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      let msg = `打包完成：${added} 个文件`;
+      if (missing > 0) msg += `，${missing} 个缺失`;
+      toastChannel.push('success', msg);
+    } catch (e) {
+      toastChannel.push('error', '导出失败：' + ((e as Error)?.message || String(e)));
+    } finally {
+      setExportMenuOpen(false);
     }
   };
 
@@ -151,7 +204,7 @@ export function App() {
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, userSelect: 'none' }}>无限画布</span>
-        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.38</span>
+        <span style={{ fontSize: 12, color: theme.text.hint, userSelect: 'none' }}>v4.42</span>
 
         {/* 状态指示器 */}
         <span
@@ -190,9 +243,72 @@ export function App() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <ToolBtn onClick={() => setWfOpen(!wfOpen)} label="工作流" title={wfOpen ? '收起工作流面板' : '展开工作流面板'} />
+          <ToolBtn onClick={() => setTimelineOpen(!timelineOpen)} label="时间轴" title={timelineOpen ? '收起时间轴' : '展开视频时间轴'} />
+          <ToolBtn onClick={() => setWfLibOpen(!wfLibOpen)} label="工作流库" title="管理自定义 ComfyUI 工作流 JSON / GPT 创建" />
           <ToolBtn onClick={undo} label="撤销" title="Ctrl+Z" />
           <ToolBtn onClick={redo} label="重做" title="Ctrl+Shift+Z" />
-          <ToolBtn onClick={exportJSON} label="导出" title="导出存档 JSON" />
+          {/* v4.40 导出下拉：JSON 归档 / ZIP 媒体包 */}
+          <div style={{ position: 'relative' }}>
+            <ToolBtn
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              label="导出"
+              title="导出画布（JSON 存档 / ZIP 媒体包）"
+            />
+            {exportMenuOpen && (
+              <>
+                {/* 遮罩层：点击菜单外关闭 */}
+                <div
+                  style={{
+                    position: 'fixed', inset: 0, zIndex: 9998,
+                  }}
+                  onClick={() => setExportMenuOpen(false)}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    zIndex: 9999,
+                    marginTop: 6,
+                    background: theme.bg.surface,
+                    borderRadius: theme.radius.md,
+                    border: `1px solid ${theme.border.default}`,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    overflow: 'hidden',
+                    minWidth: 160,
+                  }}
+                >
+                  <button
+                    onClick={() => { exportJSON(); setExportMenuOpen(false); }}
+                    style={{
+                      display: 'block', width: '100%', padding: '10px 16px',
+                      background: 'transparent', border: 'none',
+                      color: theme.text.primary, cursor: 'pointer',
+                      fontSize: 13, textAlign: 'left',
+                      borderBottom: `1px solid ${theme.border.subtle}`,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg.hover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    导出 JSON 存档
+                  </button>
+                  <button
+                    onClick={exportZIP}
+                    style={{
+                      display: 'block', width: '100%', padding: '10px 16px',
+                      background: 'transparent', border: 'none',
+                      color: theme.text.primary, cursor: 'pointer',
+                      fontSize: 13, textAlign: 'left',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg.hover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    打包下载 ZIP
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <ToolBtn onClick={importJSON} label="导入" title="导入存档 JSON" />
           <ToolBtn onClick={handleClear} label="清空" danger title="清空画布（可撤销）" />
         </div>
@@ -215,6 +331,18 @@ export function App() {
 
       {/* Toast 通知层 */}
       <ToastLayer toasts={toasts} />
+
+      {/* v4.39 视频时间轴面板 */}
+      {timelineOpen && <Timeline />}
+
+      {/* v4.42 自定义工作流库 + GPT */}
+      {wfLibOpen && (
+        <WorkflowLibrary
+          onClose={() => setWfLibOpen(false)}
+          onLoadWorkflow={handleLoadWorkflow}
+          onGptGraph={handleGptGraph}
+        />
+      )}
     </div>
   );
 }
