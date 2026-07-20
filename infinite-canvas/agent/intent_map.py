@@ -144,6 +144,7 @@ def build_workflow(
     scene_weight: float = 0.7,
     prop_image: str | None = None,
     prop_weight: float = 0.7,
+    video_quality: str = "speed",  # v5.0: 'speed' | 'quality'
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """意图 → 模板 → 参数填充 → workflow JSON。
 
@@ -169,9 +170,10 @@ def build_workflow(
         "batch_size": batch_size, "seed": seed,
     }
 
-    # ── Phase 9：视频生成（文生 / 图生）──
+    # ── Phase 9 + v5.0 LightX2V：视频生成（文生 / 图生）──
     if action in ("txt2vid", "img2vid"):
         template_id = "video_" + action
+        speed_mode = video_quality != "quality"  # v5.0: 默认 speed
         # 视频固定默认 832×480（与 Wan2.2 推荐分辨率一致），
         # 不走全局 width/height（默认为 1024，会撑大视频潜空间导致报错）。
         vw = int(params.get("width") or 832)
@@ -184,11 +186,13 @@ def build_workflow(
             wf = cc.build_img2vid(
                 image_name=input_image, prompt=prompt, negative=negative,
                 width=vw, height=vh, length=vlen, fps=vfps, seed=seed,
+                speed_mode=speed_mode,
             )
         else:
             wf = cc.build_txt2vid(
                 prompt=prompt, negative=negative,
                 width=vw, height=vh, length=vlen, fps=vfps, seed=seed,
+                speed_mode=speed_mode,
             )
         meta["video"] = True
         meta["frames"] = vlen

@@ -1175,6 +1175,22 @@ def _build_wan_video(
     return wf
 
 
+def _blueprint_nodes_to_wf(nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    """将 LightX2V 蓝图节点列表转换为 ComfyUI API 格式。
+
+    蓝图使用 _node(id, class_type, inputs) → [{"id": N, "class_type": ..., "inputs": ...}, ...]
+    转换为 ComfyUI API 格式 {"N": {"class_type": ..., "inputs": ...}, ...}
+    """
+    wf: dict[str, Any] = {}
+    for node in nodes:
+        node_id = str(node["id"])
+        wf[node_id] = {
+            "class_type": node["class_type"],
+            "inputs": node["inputs"],
+        }
+    return wf
+
+
 def build_txt2vid(
     prompt: str = "a cat walking on a sunny beach",
     negative: str = "",
@@ -1184,8 +1200,25 @@ def build_txt2vid(
     fps: int = 16,
     seed: int = 0,
     prefix: str = "ic_txt2vid",
+    speed_mode: bool = True,  # v5.0: 默认 LightX2V 4步
 ) -> dict[str, Any]:
-    """文生视频（Phase 9，§6.4.1）：Wan2.2 Bernini T2V 双噪采样。"""
+    """文生视频（Phase 9 + v5.0 LightX2V）。
+
+    speed_mode=True → LightX2V 4步蒸馏（5x 加速，默认）
+    speed_mode=False → 标准双噪 20步（质量优先）
+    """
+    if speed_mode:
+        try:
+            from lightx2v_blueprints import wan22_t2v_lightx2v
+            nodes = wan22_t2v_lightx2v(
+                positive=prompt, negative=negative,
+                width=width, height=height, frames=length,
+                steps=4, cfg=3.0, seed=seed,
+            )
+            # 转换为 ComfyUI API 格式 {node_id: {class_type, inputs}}
+            return _blueprint_nodes_to_wf(nodes)
+        except ImportError:
+            pass  # 降级到标准模式
     return _build_wan_video(
         prompt=prompt, negative=negative, width=width, height=height,
         length=length, fps=fps, seed=seed,
@@ -1204,8 +1237,25 @@ def build_img2vid(
     fps: int = 16,
     seed: int = 0,
     prefix: str = "ic_img2vid",
+    speed_mode: bool = True,  # v5.0: 默认 LightX2V 4步
 ) -> dict[str, Any]:
-    """图生视频（Phase 9，§6.4.2）：Wan2.2 I2V，start_image 为已上传文件。"""
+    """图生视频（Phase 9 + v5.0 LightX2V）。
+
+    speed_mode=True → LightX2V 4步蒸馏（5x 加速）
+    speed_mode=False → 标准双噪 20步（质量优先）
+    """
+    if speed_mode:
+        try:
+            from lightx2v_blueprints import wan22_i2v_lightx2v
+            nodes = wan22_i2v_lightx2v(
+                positive=prompt, negative=negative,
+                image_ref=image_name,
+                width=width, height=height, frames=length,
+                steps=4, cfg=3.0, seed=seed,
+            )
+            return _blueprint_nodes_to_wf(nodes)
+        except ImportError:
+            pass  # 降级到标准模式
     return _build_wan_video(
         prompt=prompt, negative=negative, width=width, height=height,
         length=length, fps=fps, seed=seed,

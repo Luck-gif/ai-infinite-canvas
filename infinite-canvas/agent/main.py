@@ -105,6 +105,7 @@ class GenerateRequest(BaseModel):
     controlnets: list[dict[str, Any]] | None = None  # ControlNet 应用：[{model, type?, strength, image, preprocessor?}]（§6.23）
     frames: int = 33          # 视频帧数（Phase 9）
     fps: int = 16             # 视频帧率（Phase 9）
+    video_quality: str | None = None  # 视频质量 v5.0: 'speed' | 'quality'（LightX2V）
     face_image: str | None = None   # 角色一致性：人脸参考图（已上传 ComfyUI input/ 的文件名，v4.33）
     face_weight: float = 0.8        # 角色一致性：面部影响权重（v4.33）
     blend_image_b: str | None = None  # 多图融合：图片 B（v4.34）
@@ -785,7 +786,8 @@ async def _build(req: GenerateRequest) -> tuple[str, dict, dict]:
             req.blend_image_b, req.blend_mode, req.blend_factor,
             req.style_image, req.style_weight, req.composition_weight,
             req.scene_image, req.scene_weight,
-            req.prop_image, req.prop_weight)
+            req.prop_image, req.prop_weight,
+            req.video_quality or "speed")  # v5.0 LightX2V
 
     # 兼容旧链路：用 checkpoint（缺省自动选共享库首个）
     template_id = "txt2img_sdxl"

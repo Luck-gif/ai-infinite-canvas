@@ -548,6 +548,7 @@ export function ControlPanel() {
         wait: false,  // 非阻塞：立即返回 prompt_id
         frames: p.frames,
         fps: p.fps,
+        video_quality: p.videoQuality,  // v5.0 LightX2V
         seed,
         batch_size: p.mode === 'txt2img' ? p.batchSize : 1,
         input_image: inputImage,
@@ -1208,12 +1209,35 @@ export function ControlPanel() {
       {(p.mode === 'txt2vid' || p.mode === 'img2vid') && (
         <div style={cardStyle}>
           <div style={{ ...labelStyle, marginBottom: 8 }}>视频参数 · Wan2.2 {p.mode === 'txt2vid' ? '文生视频' : '图生视频'}</div>
+          {/* v5.0: 速度/质量切换（LightX2V 4步蒸馏 vs 标准20步） */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button
+              onClick={() => set('videoQuality', 'speed')}
+              style={{
+                flex: 1, padding: '6px 0', borderRadius: 6, border: 'none',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                background: p.videoQuality === 'speed' ? theme.accent.fuchsia : 'rgba(255,255,255,0.06)',
+                color: p.videoQuality === 'speed' ? '#fff' : theme.text.gray,
+              }}
+            >⚡ 快速 (4步)</button>
+            <button
+              onClick={() => set('videoQuality', 'quality')}
+              style={{
+                flex: 1, padding: '6px 0', borderRadius: 6, border: 'none',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                background: p.videoQuality === 'quality' ? theme.accent.blue : 'rgba(255,255,255,0.06)',
+                color: p.videoQuality === 'quality' ? '#fff' : theme.text.gray,
+              }}
+            >🎬 质量 (20步)</button>
+          </div>
           <SliderRow label="帧数" value={p.frames ?? 33} min={17} max={81} step={8}
             onChange={(v) => set('frames', v)} fmt={(v) => `${v}（4n+1）`} />
           <SliderRow label="帧率 FPS" value={p.fps ?? 16} min={8} max={30} step={1}
             onChange={(v) => set('fps', v)} fmt={(v) => `${v}`} />
           <div style={{ fontSize: 11, color: theme.text.gray, marginTop: 2 }}>
-            建议 832×480；帧数须为 4n+1（17/33/49…），生成约数秒~数十秒。
+            {p.videoQuality === 'speed'
+              ? 'LightX2V 4步蒸馏 · ~5x 加速 · 搭配 SageAttention 可再提速 2-3x'
+              : '标准 20 步 · 高质量输出 · 建议 832×480；帧数须为 4n+1'}
           </div>
         </div>
       )}

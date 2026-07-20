@@ -1,6 +1,6 @@
-# TODO.md — 无限画布 v5.1 任务队列
+# TODO.md — 无限画布 v5.2 任务队列
 
-> 最后更新：2026-07-20 (v4.59 P1 全面完成)
+> 最后更新：2026-07-20 (v5.0 LightX2V 视频加速完成)
 > 驱动方式：PLAN → CODE → TEST → VALIDATE → DOCUMENT → 循环
 > 所有人请按优先级从上到下执行。
 
@@ -33,9 +33,14 @@
 - [x] **#13 types.ts + store.ts + api.ts 扩展** — 实体类型/层级映射/CanvasNode扩展 (v4.54-v4.56) ✅
 - [x] **#14 创建 `text_production.py`** — 多 Agent 写作管线（大纲→章节→剧本→角色卡→提示词）(v4.53) ✅
 
-## 🟢 P2 — v5.1 发布前增强
+## 🟢 P2 — v5.1 发布前增强（进行中）
 
-- [ ] **#15 LightX2V + SageAttention** 视频加速管线
+- [x] **#15 LightX2V + SageAttention** 视频加速管线 ✅ 2026-07-20
+  - `lightx2v_blueprints.py` — Wan2.2/LTX 4步/2步蒸馏蓝图（5-20x 加速）
+  - `sage_attention.py` — INT8/FP8 注意力量化配置（额外 2-3x 加速，显存-30%）
+  - 前端速度/质量切换（ControlPanel ⚡快速/🎬质量按钮）
+  - `video_quality` 参数全链路透传（types.ts → api.ts → main.py → intent_map → comfy_client）
+  - 28 个新 pytest（LightX2V + SageAttention）
 - [ ] **#16 多角色同框** Regional Pipeline（Regional Sampler + 角色 IPAdapter）
 - [ ] **#17 一致性自动审查** — CLIP embedding 跨节点对比
 - [ ] **#18 IP 相似度预警** — 角色嵌入库+阈值检测
@@ -72,18 +77,20 @@ GET  /api/health              健康检查
 
 ### 测试
 ```
-190 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard) — 全绿
+218 pytest (144 unit + 22 integration + 9 E2E + 15 storyboard + 28 lightx2v) — 全绿
 TypeScript: tsc 0 error
 ```
 
-### 新增模块（v4.50-v4.59）
+### 新增模块（v4.50-v5.0）
 ```
 pipeline_orchestrator.py   — 7-Agent管线编排器
 workflow_assembler.py      — 蓝图组装引擎
-video_blueprints.py        — 视频蓝图库
+video_blueprints.py        — 视频蓝图库 (+ LightX2V 集成)
 consistency_manager.py     — 一致性策略路由
 entity_registry.py         — 实体注册表
 text_production.py         — 多Agent写作管线
+lightx2v_blueprints.py     — LightX2V 4步/2步蒸馏蓝图 (v5.0)
+sage_attention.py          — SageAttention 量化加速配置 (v5.0)
 LayerPanel.tsx              — 三层画布切换
 WorkflowGeneratePanel.tsx   — NL→工作流生成面板
 StoryboardPanel.tsx         — 分镜规划面板

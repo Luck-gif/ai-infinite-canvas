@@ -432,14 +432,26 @@ def list_blueprints(category: str | None = None) -> list[dict[str, Any]]:
     return result
 
 
-def recommend_blueprint(vram_gb: float = 16.0, mode: str = "t2v", prefer_quality: bool = False) -> str:
+def recommend_blueprint(vram_gb: float = 16.0, mode: str = "t2v",
+                        prefer_quality: bool = False, speed_mode: bool = False) -> str:
     """根据 VRAM 和模式自动推荐最优蓝图。
 
     推荐逻辑（§4.2 量化策略）：
+    - speed_mode=True → 优先 LightX2V 4步蒸馏（v5.0）
     - ≥ 24 GB + 质量优先 → wan2.2_t2v_fp8
-    - ≥ 16 GB + 质量优先 → wan2.2_t2v_gguf
+    - ≥ 24 GB + i2v → wan2.2_i2v_fp8
+    - ≥ 16 GB → wan2.2_t2v_gguf
     - < 16 GB → ltx_t2v
+
+    v5.0 新增 speed_mode：当 speed_mode=True 时自动切换到 LightX2V 蓝图。
     """
+    # v5.0: 速度模式优先 LightX2V
+    if speed_mode:
+        try:
+            from lightx2v_blueprints import recommend_lightx2v_blueprint
+            return recommend_lightx2v_blueprint(vram_gb, mode)
+        except ImportError:
+            pass  # 降级到标准蓝图
     if mode == "i2v" and vram_gb >= 24:
         return "wan2.2_i2v_fp8"
     if vram_gb >= 24 and prefer_quality:
@@ -447,3 +459,42 @@ def recommend_blueprint(vram_gb: float = 16.0, mode: str = "t2v", prefer_quality
     if vram_gb >= 16:
         return "wan2.2_t2v_gguf"
     return "ltx_t2v"
+
+
+def get_blueprint(blueprint_id: str) -> dict[str, Any] | None:
+    """按 ID 查询蓝图（含 LightX2V 加速蓝图 v5.0）。"""
+    bp = BLUEPRINT_REGISTRY.get(blueprint_id)
+    if bp is not None:
+        return bp
+    # v5.0: fallback 到 LightX2V 注册表
+    try:
+        from lightx2v_blueprints import get_lightx2v_blueprint
+        return get_lightx2v_blueprint(blueprint_id)
+    except ImportError:
+        return None
+
+
+def list_blueprints(category: str | None = None) -> list[dict[str, Any]]:
+    """列出所有蓝图，可按类别过滤（含 LightX2V v5.0）。"""
+    result = []
+    for bp in BLUEPRINT_REGISTRY.values():
+        if category is None or bp["category"] == category:
+            result.append({
+                "id": bp["id"],
+                "name": bp["name"],
+                "category": bp["category"],
+                "license": bp["license"],
+                "vram": bp["vram"],
+                "resolution": bp["resolution"],
+                "params": bp["params"],
+                "speed_mode": bp.get("speed_mode", False),
+            })
+    # v5.0: 追加 LightX2V 蓝图
+    try:
+        from lightx2v_blueprints import list_lightx2v_blueprints
+        for lbp in list_lightx2v_blueprints():
+            if category is None or lbp["category"] == category:
+                result.append(lbp)
+    except ImportError:
+        pass
+    return result

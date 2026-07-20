@@ -163,6 +163,7 @@ export interface GenParams {
   propImage: string | null;    // 道具一致性：道具参考图上传名（v4.37）
   propWeight: number;          // 道具一致性：道具保持力（v4.37）
   storyboardPrompts: string[]; // 分镜编排：分镜提示词列表（v4.38）
+  videoQuality: 'speed' | 'quality'; // 视频质量模式（v5.0 LightX2V）
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -194,6 +195,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   propImage: null,
   propWeight: 0.7,
   storyboardPrompts: [],
+  videoQuality: 'speed', // v5.0: 默认速度优先（LightX2V）
 };
 
 /** 模板注册表项（§6.7） */

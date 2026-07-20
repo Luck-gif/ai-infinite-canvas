@@ -421,7 +421,9 @@ def test_list_controlnets_returns_shared_lib():
 
 # ── Phase 9：视频生成（Wan2.2 文生/图生视频）────────────────────
 def test_build_txt2vid_structure():
-    wf = cc.build_txt2vid("a cat surfing", length=17, fps=16, seed=7)
+    """speed_mode=False 走标准 Wan2.2 双噪工作流（v5.0）。"""
+    wf = cc.build_txt2vid("a cat surfing", length=17, fps=16, seed=7,
+                          speed_mode=False)
     wan = _find(wf, "WanImageToVideo")
     assert wan["inputs"]["width"] == 832
     assert wan["inputs"]["height"] == 480
@@ -441,7 +443,9 @@ def test_build_txt2vid_structure():
 
 
 def test_build_img2vid_has_start_image():
-    wf = cc.build_img2vid("start.png", "bring it to life", length=33, fps=24, seed=3)
+    """speed_mode=False 走标准 I2V 双噪工作流（v5.0）。"""
+    wf = cc.build_img2vid("start.png", "bring it to life", length=33, fps=24,
+                          seed=3, speed_mode=False)
     wan = _find(wf, "WanImageToVideo")
     assert wan["inputs"]["length"] == 33
     assert "start_image" in wan["inputs"]
@@ -450,9 +454,10 @@ def test_build_img2vid_has_start_image():
 
 
 def test_build_workflow_txt2vid_branch():
+    """video_quality='quality' 走标准 Wan2.2 双噪工作流（v5.0）。"""
     tid, wf, meta = im.build_workflow(
         {"action": "txt2vid", "params": {"prompt": "a fox in snow"}},
-        frames=17, fps=16, seed=11)
+        frames=17, fps=16, seed=11, video_quality="quality")
     assert tid == "video_txt2vid"
     assert meta["video"] is True
     vhs = _find(wf, "VHS_VideoCombine")
@@ -460,6 +465,21 @@ def test_build_workflow_txt2vid_branch():
     wan = _find(wf, "WanImageToVideo")
     assert wan["inputs"]["length"] == 17
     assert wan["inputs"]["width"] == 832
+
+
+def test_build_workflow_txt2vid_lightx2v():
+    """默认 video_quality='speed' 走 LightX2V 4步蒸馏路径（v5.0）。"""
+    tid, wf, meta = im.build_workflow(
+        {"action": "txt2vid", "params": {"prompt": "a fox in snow"}},
+        frames=33, fps=16, seed=42)
+    assert tid == "video_txt2vid"
+    assert meta["video"] is True
+    # LightX2V 格式使用 SaveVideo 而非 VHS_VideoCombine
+    has_save = any(
+        "SaveVideo" in str(v.get("class_type", ""))
+        for v in wf.values()
+    )
+    assert has_save, "speed 模式应输出 LightX2V SaveVideo 格式"
 
 
 def test_build_workflow_img2vid_branch():

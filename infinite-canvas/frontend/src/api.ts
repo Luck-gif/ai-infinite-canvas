@@ -63,6 +63,7 @@ export interface GenerateArgs {
   controlnets?: { model: string; type?: string; strength: number; image: string; preprocessor?: string }[]; // ControlNet（§6.23）
   frames?: number;   // 视频帧数（Phase 9）
   fps?: number;      // 视频帧率（Phase 9）
+  video_quality?: 'speed' | 'quality';  // 视频质量模式（v5.0 LightX2V）
   face_image?: string | null;  // 角色一致性：人脸参考图（v4.33）
   face_weight?: number;         // 角色一致性：面部权重（v4.33）
   blend_image_b?: string | null;  // 多图融合：图片B（v4.34）
